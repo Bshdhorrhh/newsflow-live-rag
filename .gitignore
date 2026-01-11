@@ -1,0 +1,21 @@
+# Virtual environments
+pathway-hackathon/
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Local secrets
+.env
+
+# Pathway runtime data
+pathway_data/
+
+# OS junk
+.DS_Store
+.cache
+

@@ -1,0 +1,9 @@
+pathway-hackathon/
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+.git
+.cache
+
