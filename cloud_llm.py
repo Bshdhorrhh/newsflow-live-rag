@@ -1,7 +1,7 @@
 """
 cloud_llm.py
 Google Gemini Cloud LLM (Text Generation)
-Used when LLM_BACKEND=cloud
+Used when LLM_PROVIDER=gemini
 """
 
 import os
@@ -15,7 +15,7 @@ API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
     raise RuntimeError("❌ GEMINI_API_KEY not set")
 
-# ✅ USE ONLY SUPPORTED TEXT MODELS
+# Supported fast model
 MODEL_NAME = "gemini-2.5-flash-lite"
 
 # ======================================================
@@ -37,10 +37,10 @@ model = genai.GenerativeModel(
 print(f"☁️ Cloud LLM ready: {MODEL_NAME}")
 
 # ======================================================
-# MAIN API
+# INTERNAL GEMINI CALL
 # ======================================================
 
-def ask_llm(query: str, context_docs: list[str]) -> str:
+def _ask_gemini(query: str, context_docs: list[str]) -> str:
     context = "\n\n".join(
         f"[DOC {i+1}]\n{doc[:1500]}"
         for i, doc in enumerate(context_docs)
@@ -68,3 +68,11 @@ ANSWER:
         return response.text.strip()
     except Exception as e:
         return f"❌ Gemini error: {e}"
+
+
+# ======================================================
+# PUBLIC LLM INTERFACE (for llm_router.py)
+# ======================================================
+
+def gemini_llm(query: str, context_docs: list[str]) -> str:
+    return _ask_gemini(query, context_docs)
