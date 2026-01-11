@@ -194,10 +194,10 @@ pw.io.subscribe(docs_vec, persist_vector)
 # MAIN
 # ======================================================
 
-    print("\n🚀 Continuous Live News RAG (FINAL)")
-    print("Pipeline running — Ctrl+C to stop\n")
+        print("\n🚀 Continuous Live News RAG (FINAL)")
+        print("Pipeline running — Ctrl+C to stop\n")
 
-    threading.Thread(target=poll_newsapi, daemon=True).start()
+        threading.Thread(target=poll_newsapi, daemon=True).start()
 
     try:
         pw.run()
