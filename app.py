@@ -9,6 +9,11 @@ import pandas as pd
 import numpy as np
 import streamlit.components.v1 as components
 
+if "RAG_STARTED" not in st.session_state:
+    import simple_news_rag
+    simple_news_rag.start_background_rag()
+    st.session_state["RAG_STARTED"] = True
+
 if "PATHWAY_STARTED" not in os.environ:
     os.environ["PATHWAY_STARTED"] = "1"
     import simple_news_rag

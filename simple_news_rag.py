@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-CONTINUOUS LIVE NEWS RAG (FINAL FIXED)
+CONTINUOUS LIVE NEWS RAG (STREAMLIT SAFE)
 ✔ Streaming-safe Pathway
 ✔ Deduplicated NewsAPI ingestion
 ✔ Persistent vector store
 ✔ Offline embeddings
+✔ Background-thread compatible
 """
 
 import os
@@ -59,8 +60,6 @@ def init_storage():
         np.save(VECTORS_FILE, np.empty((0, EMBED_DIM)))
 
     print("✅ Storage initialized")
-
-init_storage()
 
 # ======================================================
 # OFFLINE EMBEDDINGS
@@ -133,70 +132,72 @@ def poll_newsapi():
 # PATHWAY PIPELINE
 # ======================================================
 
-schema = pw.schema_builder(
-    columns={
-        "row_id": pw.column_definition(dtype=str, primary_key=True),
-        "article_id": pw.column_definition(dtype=str),
-        "title": pw.column_definition(dtype=str),
-        "content": pw.column_definition(dtype=str),
-        "published_at": pw.column_definition(dtype=str),
-    }
-)
+def start_pathway():
+    print("🧠 Starting Pathway pipeline")
 
-news = pw.io.csv.read(
-    DATA_FILE,
-    schema=schema,
-    mode="streaming",
-)
+    schema = pw.schema_builder(
+        columns={
+            "row_id": pw.column_definition(dtype=str, primary_key=True),
+            "article_id": pw.column_definition(dtype=str),
+            "title": pw.column_definition(dtype=str),
+            "content": pw.column_definition(dtype=str),
+            "published_at": pw.column_definition(dtype=str),
+        }
+    )
 
-docs = news.select(
-    article_id=pw.this.article_id,
-    text=pw.apply(lambda t, c: f"{t}. {c}", pw.this.title, pw.this.content),
-)
+    news = pw.io.csv.read(
+        DATA_FILE,
+        schema=schema,
+        mode="streaming",
+    )
 
-@pw.udf
-def embed_udf(text: str):
-    return embed_text(text)
+    docs = news.select(
+        article_id=pw.this.article_id,
+        text=pw.apply(lambda t, c: f"{t}. {c}", pw.this.title, pw.this.content),
+    )
 
-docs_vec = docs.with_columns(
-    embedding=embed_udf(pw.this.text)
-)
+    @pw.udf
+    def embed_udf(text: str):
+        return embed_text(text)
 
-# ======================================================
-# VECTOR PERSISTENCE
-# ======================================================
+    docs_vec = docs.with_columns(
+        embedding=embed_udf(pw.this.text)
+    )
 
-def persist_vector(key, row, time, is_addition):
-    if not is_addition:
-        return
-
-    with lock:
-        with open(META_FILE) as f:
-            meta = json.load(f)
-
-        if row["article_id"] in meta:
+    def persist_vector(key, row, time, is_addition):
+        if not is_addition:
             return
 
-        vectors = np.load(VECTORS_FILE)
-        vectors = np.vstack([vectors, np.array(row["embedding"])])
+        with lock:
+            with open(META_FILE) as f:
+                meta = json.load(f)
 
-        meta[row["article_id"]] = row["text"]
+            if row["article_id"] in meta:
+                return
 
-        np.save(VECTORS_FILE, vectors)
-        with open(META_FILE, "w") as f:
-            json.dump(meta, f, indent=2)
+            vectors = np.load(VECTORS_FILE)
+            vectors = np.vstack([vectors, np.array(row["embedding"])])
 
-        print("🧠 Vector stored")
+            meta[row["article_id"]] = row["text"]
 
-pw.io.subscribe(docs_vec, persist_vector)
+            np.save(VECTORS_FILE, vectors)
+            with open(META_FILE, "w") as f:
+                json.dump(meta, f, indent=2)
+
+            print("🧠 Vector stored")
+
+    pw.io.subscribe(docs_vec, persist_vector)
+
+    pw.run()
 
 # ======================================================
-# START PIPELINE (RUNS ON IMPORT)
+# STREAMLIT-SAFE ENTRY POINT
 # ======================================================
 
-print("\n🚀 Continuous Live News RAG (FINAL)")
-print("Pipeline running\n")
+def start_background_rag():
+    init_storage()
 
-threading.Thread(target=poll_newsapi, daemon=True).start()
+    print("🚀 Starting Live News RAG")
 
-
+    threading.Thread(target=poll_newsapi, daemon=True).start()
+    threading.Thread(target=start_pathway, daemon=True).start()
