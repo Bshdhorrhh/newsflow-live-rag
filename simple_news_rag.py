@@ -194,7 +194,6 @@ pw.io.subscribe(docs_vec, persist_vector)
 # MAIN
 # ======================================================
 
-if __name__ == "__main__":
     print("\n🚀 Continuous Live News RAG (FINAL)")
     print("Pipeline running — Ctrl+C to stop\n")
 
