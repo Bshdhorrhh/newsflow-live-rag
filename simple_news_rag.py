@@ -37,7 +37,7 @@ POLL_INTERVAL = 15
 lock = Lock()
 
 # ======================================================
-# STORAGE INIT (HEADER GUARANTEED)
+# STORAGE INIT
 # ======================================================
 
 def init_storage():
@@ -58,12 +58,12 @@ def init_storage():
     if not Path(VECTORS_FILE).exists():
         np.save(VECTORS_FILE, np.empty((0, EMBED_DIM)))
 
-    print("✅ Storage initialised")
+    print("✅ Storage initialized")
 
 init_storage()
 
 # ======================================================
-# OFFLINE EMBEDDINGS (DETERMINISTIC)
+# OFFLINE EMBEDDINGS
 # ======================================================
 
 def embed_text(text: str) -> list[float]:
@@ -74,7 +74,7 @@ def embed_text(text: str) -> list[float]:
     return (vec / norm).tolist() if norm else vec.tolist()
 
 # ======================================================
-# NEWS POLLER (DEDUP SAFE)
+# NEWS POLLER
 # ======================================================
 
 def poll_newsapi():
@@ -108,7 +108,7 @@ def poll_newsapi():
                     continue
 
                 new_rows.append([
-                    str(uuid4()),   # unique primary key
+                    str(uuid4()),
                     url,
                     a.get("title", ""),
                     a.get("content") or a.get("description", ""),
@@ -163,7 +163,7 @@ docs_vec = docs.with_columns(
 )
 
 # ======================================================
-# VECTOR PERSISTENCE (SAFE)
+# VECTOR PERSISTENCE
 # ======================================================
 
 def persist_vector(key, row, time, is_addition):
@@ -191,15 +191,15 @@ def persist_vector(key, row, time, is_addition):
 pw.io.subscribe(docs_vec, persist_vector)
 
 # ======================================================
-# MAIN
+# START PIPELINE (RUNS ON IMPORT)
 # ======================================================
 
 print("\n🚀 Continuous Live News RAG (FINAL)")
-        print("Pipeline running — Ctrl+C to stop\n")
+print("Pipeline running\n")
 
-        threading.Thread(target=poll_newsapi, daemon=True).start()
+threading.Thread(target=poll_newsapi, daemon=True).start()
 
-    try:
-        pw.run()
-    except KeyboardInterrupt:
-        print("\n⏹ Stopped cleanly")
+try:
+    pw.run()
+except KeyboardInterrupt:
+    print("\n⏹ Stopped cleanly")
