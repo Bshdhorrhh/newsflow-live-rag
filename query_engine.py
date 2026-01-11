@@ -205,9 +205,9 @@ stats_tracker = StatsTracker()
 LLM_BACKEND = os.getenv("LLM_BACKEND", "local").lower()
 
 if LLM_BACKEND == "local":
-    from ollama_llm import ask_llm
+    from llm_router import llm
 elif LLM_BACKEND == "cloud":
-    from cloud_llm import ask_llm
+    from llm_router import llm
 else:
     raise RuntimeError("❌ Invalid LLM_BACKEND value")
 
@@ -582,8 +582,8 @@ Format the response to be informative and well-structured."""
 
     try:
         # Get LLM summary
-        summary = ask_llm(prompt, [])
-        
+        summary = llm(prompt, [])
+
         # Calculate response time
         response_time = time_module.time() - start_time
         
