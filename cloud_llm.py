@@ -21,3 +21,4 @@ def ask_gemini(prompt: str) -> str:
 
     except Exception as e:
         return f"Gemini Error: {str(e)}"
+print("☁️ Gemini client ready:", MODEL)
