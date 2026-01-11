@@ -202,14 +202,8 @@ stats_tracker = StatsTracker()
 # LLM BACKEND ROUTER
 # ======================================================
 
-LLM_BACKEND = os.getenv("LLM_PROVIDER", "ollama").lower()
+from llm_router import llm_answer
 
-if LLM_BACKEND == "ollama":
-    from llm_router import llm
-elif LLM_BACKEND == "gemini":
-    from llm_router import llm
-else:
-    raise RuntimeError("❌ Invalid LLM_BACKEND value")
 
 # ======================================================
 # CONFIG - AUTO-DETECT EMBEDDING DIMENSION
@@ -582,7 +576,7 @@ Format the response to be informative and well-structured."""
 
     try:
         # Get LLM summary
-        summary = llm(prompt, [])
+        summary = llm_answer(prompt)
 
         # Calculate response time
         response_time = time_module.time() - start_time

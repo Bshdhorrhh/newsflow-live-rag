@@ -1,28 +1,18 @@
-"""
-llm_router.py
-Routes between local Ollama and cloud Gemini LLMs
-"""
-
 import os
+import google.generativeai as genai
 
-# Read provider from environment
-PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-print(f"🔀 LLM provider selected: {PROVIDER}")
+if not GEMINI_API_KEY:
+    raise RuntimeError("❌ GEMINI_API_KEY not found in environment variables")
 
-# ======================================================
-# Load the correct LLM
-# ======================================================
+genai.configure(api_key=GEMINI_API_KEY)
 
-if PROVIDER == "gemini":
-    from cloud_llm import gemini_llm
-    llm = gemini_llm
-    print("☁️ Using Gemini Cloud LLM")
+model = genai.GenerativeModel("gemini-1.5-flash")
 
-elif PROVIDER == "ollama":
-    from ollama_llm import local_llm
-    llm = local_llm
-    print("🧠 Using Ollama Local LLM")
-
-else:
-    raise RuntimeError(f"❌ Unknown LLM_PROVIDER: {PROVIDER}")
+def gemini_generate(prompt: str) -> str:
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Gemini Error: {e}"
