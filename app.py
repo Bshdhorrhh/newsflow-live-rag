@@ -9,22 +9,31 @@ import pandas as pd
 import numpy as np
 import streamlit.components.v1 as components
 
-if "RAG_STARTED" not in st.session_state:
-    from query_engine import start_background_rag
-    start_background_rag()
-    st.session_state["RAG_STARTED"] = True
+# Add current folder to import path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-if "PATHWAY_STARTED" not in os.environ:
-    os.environ["PATHWAY_STARTED"] = "1"
+# ======================================================
+# SAFE QUERY ENGINE LOADING
+# ======================================================
+
+try:
     from query_engine import rag_answer, get_system_stats, get_live_stats
-
-
-# Add the current directory to path to import query_engine
-
     HAS_QUERY_ENGINE = True
-except ImportError:
-    # st.warning("⚠️ Query engine not found. Using mock data.")
+except ImportError as e:
+    print("❌ Query engine import failed:", e)
     HAS_QUERY_ENGINE = False
+
+# ======================================================
+# START BACKGROUND RAG ONLY ONCE
+# ======================================================
+
+if HAS_QUERY_ENGINE and "RAG_STARTED" not in st.session_state:
+    try:
+        import simple_news_rag
+        simple_news_rag.start_background_rag()
+        st.session_state["RAG_STARTED"] = True
+    except Exception as e:
+        print("⚠️ RAG background failed:", e)
 
 # 1. Page Config
 st.set_page_config(
