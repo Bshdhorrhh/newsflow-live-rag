@@ -9,6 +9,11 @@ import pandas as pd
 import numpy as np
 import streamlit.components.v1 as components
 
+if "PATHWAY_STARTED" not in os.environ:
+    os.environ["PATHWAY_STARTED"] = "1"
+    import simple_news_rag
+
+
 # Add the current directory to path to import query_engine
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
