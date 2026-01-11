@@ -199,7 +199,4 @@ print("Pipeline running\n")
 
 threading.Thread(target=poll_newsapi, daemon=True).start()
 
-try:
-    pw.run(background=True)
-except KeyboardInterrupt:
-    print("\n⏹ Stopped cleanly")
+
