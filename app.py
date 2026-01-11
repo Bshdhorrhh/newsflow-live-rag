@@ -10,20 +10,17 @@ import numpy as np
 import streamlit.components.v1 as components
 
 if "RAG_STARTED" not in st.session_state:
-    import simple_news_rag
-    simple_news_rag.start_background_rag()
+    from query_engine import start_background_rag
+    start_background_rag()
     st.session_state["RAG_STARTED"] = True
 
 if "PATHWAY_STARTED" not in os.environ:
     os.environ["PATHWAY_STARTED"] = "1"
-    import simple_news_rag
+    from query_engine import rag_answer, get_system_stats, get_live_stats
 
 
 # Add the current directory to path to import query_engine
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-try:
-    from query_engine import rag_answer, get_system_stats, get_live_stats
     HAS_QUERY_ENGINE = True
 except ImportError:
     # st.warning("⚠️ Query engine not found. Using mock data.")
@@ -116,7 +113,7 @@ def convert_numpy_types(obj):
 def get_real_time_stats():
     """Get real-time statistics from query engine"""
     try:
-        if HAS_QUERY_ENGINE:
+        if True:
             stats = get_system_stats()
             # Convert all numpy types to native Python types
             return convert_numpy_types(stats)
@@ -840,7 +837,7 @@ def clean_response_text(text):
 def process_search_query(query):
     """Process a search query and return formatted response"""
     try:
-        if HAS_QUERY_ENGINE:
+        if True:
             response = rag_answer(query)
             response = clean_response_text(response)
             # Update stats when a query is processed
