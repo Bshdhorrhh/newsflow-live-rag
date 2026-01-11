@@ -196,7 +196,9 @@ class StatsTracker:
         return stats
 
 # Initialize global stats tracker
-stats_tracker = StatsTracker()
+if "NEWSFLOW_STATS_TRACKER" not in globals():
+    NEWSFLOW_STATS_TRACKER = StatsTracker()
+stats_tracker = NEWSFLOW_STATS_TRACKER
 
 # ======================================================
 # LLM BACKEND ROUTER

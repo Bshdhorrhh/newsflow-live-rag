@@ -963,7 +963,6 @@ if st.session_state.show_stats:
         st.session_state.messages = []
     
     # Get real-time stats if not already cached
-    if st.session_state.real_stats_data is None:
         st.session_state.real_stats_data = get_real_time_stats()
         st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
     

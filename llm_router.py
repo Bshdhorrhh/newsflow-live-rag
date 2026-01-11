@@ -1,18 +1,10 @@
+import google.generativeai as genai
 import os
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
-if LLM_PROVIDER == "gemini":
-    from cloud_llm import ask_gemini
+model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
-    def llm(prompt, history):
-        return ask_gemini(prompt)
-
-elif LLM_PROVIDER == "ollama":
-    from local_llm import ask_ollama
-
-    def llm(prompt, history):
-        return ask_ollama(prompt)
-
-else:
-    raise RuntimeError("Invalid LLM_PROVIDER")
+def llm_answer(prompt: str) -> str:
+    response = model.generate_content(prompt)
+    return response.text
