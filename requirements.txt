@@ -2,5 +2,5 @@ pathway>=0.27.1
 numpy
 requests
 streamlit
-google-generativeai
+google-genai
 python-dotenv
