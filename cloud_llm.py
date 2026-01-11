@@ -1,78 +1,28 @@
 """
-cloud_llm.py
-Google Gemini Cloud LLM (Text Generation)
-Used when LLM_PROVIDER=gemini
+llm_router.py
+Routes between local Ollama and cloud Gemini LLMs
 """
 
 import os
-import google.generativeai as genai
+
+# Read provider from environment
+PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
+
+print(f"🔀 LLM provider selected: {PROVIDER}")
 
 # ======================================================
-# CONFIG
+# Load the correct LLM
 # ======================================================
 
-API_KEY = os.getenv("GEMINI_API_KEY")
-if not API_KEY:
-    raise RuntimeError("❌ GEMINI_API_KEY not set")
+if PROVIDER == "gemini":
+    from cloud_llm import gemini_llm
+    llm = gemini_llm
+    print("☁️ Using Gemini Cloud LLM")
 
-# Supported fast model
-MODEL_NAME = "gemini-2.5-flash-lite"
+elif PROVIDER == "ollama":
+    from ollama_llm import local_llm
+    llm = local_llm
+    print("🧠 Using Ollama Local LLM")
 
-# ======================================================
-# INIT
-# ======================================================
-
-genai.configure(api_key=API_KEY)
-
-model = genai.GenerativeModel(
-    MODEL_NAME,
-    generation_config={
-        "temperature": 0.2,
-        "top_p": 0.9,
-        "top_k": 40,
-        "max_output_tokens": 512,
-    },
-)
-
-print(f"☁️ Cloud LLM ready: {MODEL_NAME}")
-
-# ======================================================
-# INTERNAL GEMINI CALL
-# ======================================================
-
-def _ask_gemini(query: str, context_docs: list[str]) -> str:
-    context = "\n\n".join(
-        f"[DOC {i+1}]\n{doc[:1500]}"
-        for i, doc in enumerate(context_docs)
-    )
-
-    prompt = f"""
-You are a professional news analyst.
-
-RULES:
-- Use ONLY the context below
-- Do NOT hallucinate
-- If context is insufficient, say so
-
-CONTEXT:
-{context}
-
-QUESTION:
-{query}
-
-ANSWER:
-"""
-
-    try:
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except Exception as e:
-        return f"❌ Gemini error: {e}"
-
-
-# ======================================================
-# PUBLIC LLM INTERFACE (for llm_router.py)
-# ======================================================
-
-def gemini_llm(query: str, context_docs: list[str]) -> str:
-    return _ask_gemini(query, context_docs)
+else:
+    raise RuntimeError(f"❌ Unknown LLM_PROVIDER: {PROVIDER}")
