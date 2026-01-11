@@ -202,11 +202,11 @@ stats_tracker = StatsTracker()
 # LLM BACKEND ROUTER
 # ======================================================
 
-LLM_BACKEND = os.getenv("LLM_BACKEND", "local").lower()
+LLM_BACKEND = os.getenv("LLM_PROVIDER", "ollama").lower()
 
-if LLM_BACKEND == "local":
+if LLM_BACKEND == "ollama":
     from llm_router import llm
-elif LLM_BACKEND == "cloud":
+elif LLM_BACKEND == "gemini":
     from llm_router import llm
 else:
     raise RuntimeError("❌ Invalid LLM_BACKEND value")
