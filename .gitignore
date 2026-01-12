@@ -1,21 +1,67 @@
-# Virtual environments
-pathway-hackathon/
-venv/
-.venv/
-env/
-
-# Python cache
+# Create or update .gitignore
+cat > .gitignore << "EOF"
+# Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Local secrets
-.env
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
 
-# Pathway runtime data
-pathway_data/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# OS junk
+# OS
 .DS_Store
-.cache
+Thumbs.db
 
+# Data files
+*.db
+*.sqlite
+*.npy
+*.csv
+vectors.npy
+metadata.json
+query_stats.db
+seen_urls.json
+live_news.csv
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Streamlit secrets (don't commit API keys!)
+.streamlit/secrets.toml
+
+# Temporary files
+temp/
+tmp/
+EOF

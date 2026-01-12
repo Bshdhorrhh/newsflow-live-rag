@@ -1,6 +1,11 @@
-pathway>=0.27.1
-numpy
-requests
-streamlit
-google-genai
-python-dotenv
+# Create requirements.txt
+cat > requirements.txt << "EOF"
+streamlit>=1.28.0
+numpy>=1.24.0
+pandas>=2.0.0
+requests>=2.31.0
+google-generativeai>=0.3.0
+python-dotenv>=1.0.0
+pathway==0.27.1
+SQLAlchemy>=2.0.0
+EOF

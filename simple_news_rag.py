@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """
 CONTINUOUS LIVE NEWS RAG (STREAMLIT SAFE)
-✔ Streaming-safe Pathway
-✔ Deduplicated NewsAPI ingestion
-✔ Persistent vector store
-✔ Offline embeddings
-✔ Background-thread compatible
+Simplified version for Streamlit Cloud compatibility
 """
 
 import os
@@ -15,7 +11,6 @@ import json
 import threading
 import requests
 import numpy as np
-import pathway as pw
 from pathlib import Path
 from uuid import uuid4
 from threading import Lock
@@ -24,9 +19,9 @@ from threading import Lock
 # CONFIG
 # ======================================================
 
-NEWS_API_KEY = os.getenv("NEWSAPI_KEY")
-if not NEWS_API_KEY:
-    raise RuntimeError("❌ NEWSAPI_KEY not set")
+# Use environment variable or default to mock mode
+NEWS_API_KEY = os.getenv("NEWSAPI_KEY", "")
+USE_LIVE_NEWS = bool(NEWS_API_KEY)
 
 DATA_FILE = "live_news.csv"
 VECTORS_FILE = "vectors.npy"
@@ -34,7 +29,7 @@ META_FILE = "metadata.json"
 SEEN_FILE = "seen_urls.json"
 
 EMBED_DIM = 64
-POLL_INTERVAL = 15
+POLL_INTERVAL = 60  # Reduced frequency for Streamlit Cloud
 lock = Lock()
 
 # ======================================================
@@ -42,162 +37,221 @@ lock = Lock()
 # ======================================================
 
 def init_storage():
-    if not Path(DATA_FILE).exists():
-        with open(DATA_FILE, "w", newline="") as f:
-            csv.writer(f).writerow(
-                ["row_id", "article_id", "title", "content", "published_at"]
-            )
+    """Initialize storage files"""
+    try:
+        # Create data file if it doesn't exist
+        if not Path(DATA_FILE).exists():
+            with open(DATA_FILE, "w", newline="", encoding="utf-8") as f:
+                csv.writer(f).writerow(
+                    ["row_id", "article_id", "title", "content", "published_at"]
+                )
+            print(f"✅ Created {DATA_FILE}")
 
-    for file, default in [
-        (META_FILE, {}),
-        (SEEN_FILE, []),
-    ]:
-        if not Path(file).exists():
-            with open(file, "w") as f:
-                json.dump(default, f)
+        # Create metadata file if it doesn't exist
+        if not Path(META_FILE).exists():
+            with open(META_FILE, "w", encoding="utf-8") as f:
+                json.dump({}, f)
+            print(f"✅ Created {META_FILE}")
 
-    if not Path(VECTORS_FILE).exists():
-        np.save(VECTORS_FILE, np.empty((0, EMBED_DIM)))
+        # Create seen URLs file if it doesn't exist
+        if not Path(SEEN_FILE).exists():
+            with open(SEEN_FILE, "w", encoding="utf-8") as f:
+                json.dump([], f)
+            print(f"✅ Created {SEEN_FILE}")
 
-    print("✅ Storage initialized")
+        # Create vectors file if it doesn't exist
+        if not Path(VECTORS_FILE).exists():
+            np.save(VECTORS_FILE, np.empty((0, EMBED_DIM)))
+            print(f"✅ Created {VECTORS_FILE}")
+
+        print("✅ Storage initialized successfully")
+        return True
+    except Exception as e:
+        print(f"❌ Storage initialization failed: {e}")
+        return False
 
 # ======================================================
 # OFFLINE EMBEDDINGS
 # ======================================================
 
 def embed_text(text: str) -> list[float]:
+    """Simple text embedding function"""
     vec = np.zeros(EMBED_DIM)
-    for i, b in enumerate(text.encode("utf-8", errors="ignore")):
+    text_bytes = text.encode("utf-8", errors="ignore")
+
+    for i, b in enumerate(text_bytes):
         vec[i % EMBED_DIM] += (b % 31) / 31.0
+
     norm = np.linalg.norm(vec)
-    return (vec / norm).tolist() if norm else vec.tolist()
+    if norm > 0:
+        vec = vec / norm
+
+    return vec.tolist()
 
 # ======================================================
-# NEWS POLLER
+# NEWS POLLER (OPTIONAL)
 # ======================================================
 
 def poll_newsapi():
+    """Poll NewsAPI for new articles"""
+    if not USE_LIVE_NEWS:
+        print("⚠️ NewsAPI key not set, running in mock mode")
+        return
+
     print("📡 NewsAPI poller started")
 
     while True:
         try:
-            r = requests.get(
-                "https://newsapi.org/v2/top-headlines",
-                params={
-                    "language": "en",
-                    "pageSize": 10,
-                    "apiKey": NEWS_API_KEY,
-                },
-                timeout=10,
-            )
-            data = r.json()
+            # Fetch news from NewsAPI
+            url = "https://newsapi.org/v2/top-headlines"
+            params = {
+                "language": "en",
+                "pageSize": 5,  # Reduced for Streamlit Cloud
+                "apiKey": NEWS_API_KEY,
+                "category": "technology"  # Focus on tech news
+            }
+
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            with lock:
+                # Load seen URLs
+                with open(SEEN_FILE, "r", encoding="utf-8") as f:
+                    seen = set(json.load(f))
+
+                new_rows = []
+                for article in data.get("articles", []):
+                    url = article.get("url")
+                    if not url or url in seen:
+                        continue
+
+                    # Create new row
+                    new_rows.append([
+                        str(uuid4()),
+                        url,
+                        article.get("title", ""),
+                        article.get("content") or article.get("description", ""),
+                        article.get("publishedAt", "")
+                    ])
+                    seen.add(url)
+
+                # Save new articles
+                if new_rows:
+                    with open(DATA_FILE, "a", newline="", encoding="utf-8") as f:
+                        csv.writer(f).writerows(new_rows)
+
+                    # Update seen URLs
+                    with open(SEEN_FILE, "w", encoding="utf-8") as f:
+                        json.dump(list(seen), f)
+
+                    print(f"📰 Added {len(new_rows)} new articles")
+
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ API request error: {e}")
         except Exception as e:
-            print("⚠️ API error:", e)
-            time.sleep(POLL_INTERVAL)
-            continue
+            print(f"⚠️ Unexpected error in poller: {e}")
 
-        with lock:
-            with open(SEEN_FILE) as f:
-                seen = set(json.load(f))
-
-            new_rows = []
-            for a in data.get("articles", []):
-                url = a.get("url")
-                if not url or url in seen:
-                    continue
-
-                new_rows.append([
-                    str(uuid4()),
-                    url,
-                    a.get("title", ""),
-                    a.get("content") or a.get("description", ""),
-                    a.get("publishedAt", ""),
-                ])
-                seen.add(url)
-
-            if new_rows:
-                with open(DATA_FILE, "a", newline="") as f:
-                    csv.writer(f).writerows(new_rows)
-
-                with open(SEEN_FILE, "w") as f:
-                    json.dump(list(seen), f)
-
-                print(f"📰 {len(new_rows)} new articles")
-            else:
-                print("⏳ No new articles")
-
+        # Wait before next poll
         time.sleep(POLL_INTERVAL)
 
 # ======================================================
-# PATHWAY PIPELINE
+# VECTOR UPDATE FUNCTION
 # ======================================================
 
-def start_pathway():
-    print("🧠 Starting Pathway pipeline")
+def update_vectors():
+    """Update vectors from new articles"""
+    print("🔄 Checking for new articles to vectorize...")
 
-    schema = pw.schema_builder(
-        columns={
-            "row_id": pw.column_definition(dtype=str, primary_key=True),
-            "article_id": pw.column_definition(dtype=str),
-            "title": pw.column_definition(dtype=str),
-            "content": pw.column_definition(dtype=str),
-            "published_at": pw.column_definition(dtype=str),
-        }
-    )
-
-    news = pw.io.csv.read(
-        DATA_FILE,
-        schema=schema,
-        mode="streaming",
-    )
-
-    docs = news.select(
-        article_id=pw.this.article_id,
-        text=pw.apply(lambda t, c: f"{t}. {c}", pw.this.title, pw.this.content),
-    )
-
-    @pw.udf
-    def embed_udf(text: str):
-        return embed_text(text)
-
-    docs_vec = docs.with_columns(
-        embedding=embed_udf(pw.this.text)
-    )
-
-    def persist_vector(key, row, time, is_addition):
-        if not is_addition:
-            return
-
+    try:
         with lock:
-            with open(META_FILE) as f:
-                meta = json.load(f)
+            # Read all articles
+            articles = []
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    articles.append(row)
 
-            if row["article_id"] in meta:
-                return
+            # Load existing metadata
+            with open(META_FILE, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
 
+            # Load existing vectors
             vectors = np.load(VECTORS_FILE)
-            vectors = np.vstack([vectors, np.array(row["embedding"])])
 
-            meta[row["article_id"]] = row["text"]
+            # Process new articles
+            new_count = 0
+            for article in articles:
+                article_id = article["article_id"]
 
-            np.save(VECTORS_FILE, vectors)
-            with open(META_FILE, "w") as f:
-                json.dump(meta, f, indent=2)
+                # Skip if already in metadata
+                if article_id in metadata:
+                    continue
 
-            print("🧠 Vector stored")
+                # Create text for embedding
+                text = f"{article['title']}. {article['content']}"
 
-    pw.io.subscribe(docs_vec, persist_vector)
+                # Generate embedding
+                embedding = embed_text(text)
 
-    pw.run()
+                # Update vectors
+                vectors = np.vstack([vectors, np.array(embedding)])
+
+                # Update metadata
+                metadata[article_id] = {
+                    "text": text,
+                    "title": article["title"],
+                    "published_at": article["published_at"]
+                }
+
+                new_count += 1
+
+            # Save updated data
+            if new_count > 0:
+                np.save(VECTORS_FILE, vectors)
+                with open(META_FILE, "w", encoding="utf-8") as f:
+                    json.dump(metadata, f, indent=2)
+
+                print(f"🧠 Vectorized {new_count} new articles")
+            else:
+                print("⏳ No new articles to vectorize")
+
+    except Exception as e:
+        print(f"⚠️ Error updating vectors: {e}")
 
 # ======================================================
 # STREAMLIT-SAFE ENTRY POINT
 # ======================================================
 
 def start_background_rag():
-    init_storage()
+    """Start the background RAG system"""
+    print("🚀 Starting NewsFlow RAG System")
 
-    print("🚀 Starting Live News RAG")
+    # Initialize storage
+    if not init_storage():
+        print("❌ Failed to initialize storage, running in limited mode")
+        return
 
-    threading.Thread(target=poll_newsapi, daemon=True).start()
-    threading.Thread(target=start_pathway, daemon=True).start()
+    # Start news poller in a separate thread (if API key available)
+    if USE_LIVE_NEWS:
+        poller_thread = threading.Thread(target=poll_newsapi, daemon=True)
+        poller_thread.start()
+        print("✅ News poller started")
+    else:
+        print("ℹ️ Running without live news updates (no API key)")
+
+    # Start vector updater in a separate thread
+    def vector_updater():
+        while True:
+            update_vectors()
+            time.sleep(POLL_INTERVAL * 2)  # Update less frequently
+
+    updater_thread = threading.Thread(target=vector_updater, daemon=True)
+    updater_thread.start()
+    print("✅ Vector updater started")
+
+    print("✅ NewsFlow RAG system is running")
+
+# For direct execution
+if __name__ == "__main__":
+    start_background_rag()

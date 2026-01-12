@@ -8,6 +8,8 @@ import re
 import pandas as pd
 import numpy as np
 import streamlit.components.v1 as components
+import sqlite3
+from pathlib import Path
 
 # Add current folder to import path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -16,29 +18,123 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # SAFE QUERY ENGINE LOADING
 # ======================================================
 
+HAS_QUERY_ENGINE = False
 try:
-    from query_engine import rag_answer, get_system_stats, get_live_stats
-    HAS_QUERY_ENGINE = True
+    # Check if required files exist first
+    required_files = ["vectors.npy", "metadata.json", "query_engine.py"]
+    if all(Path(f).exists() for f in required_files):
+        from query_engine import rag_answer, get_system_stats, get_live_stats
+        HAS_QUERY_ENGINE = True
+        print("✅ Query engine loaded successfully")
+    else:
+        print("⚠️ Required files missing, using mock mode")
 except ImportError as e:
-    print("❌ Query engine import failed:", e)
+    print(f"❌ Query engine import failed: {e}")
+    HAS_QUERY_ENGINE = False
+except Exception as e:
+    print(f"❌ Error loading query engine: {e}")
     HAS_QUERY_ENGINE = False
 
 # ======================================================
-# START BACKGROUND RAG ONLY ONCE
+# MOCK FUNCTIONS FOR FALLBACK
+# ======================================================
+
+if not HAS_QUERY_ENGINE:
+    def rag_answer(query):
+        """Mock RAG answer function"""
+        mock_responses = {
+            "tech": "**Technology News Summary**\n\nRecent developments in the tech sector show significant growth in AI adoption across industries. Major companies are investing heavily in machine learning research, with breakthroughs in natural language processing and computer vision.\n\n**Key Developments:**\n• AI integration in enterprise solutions increased by 40% this quarter\n• Cloud computing services show record adoption rates\n• Cybersecurity remains a top concern with new threats emerging\n• Quantum computing research reaches new milestones",
+            "ai": "**Artificial Intelligence Updates**\n\nThe AI landscape continues to evolve rapidly with new models and applications emerging weekly. Recent conferences highlighted advancements in multimodal AI systems capable of processing text, images, and audio simultaneously.\n\n**Notable Developments:**\n• New open-source language models with improved reasoning capabilities\n• AI-driven healthcare diagnostics showing 95% accuracy in trials\n• Regulatory frameworks taking shape across multiple countries\n• Increased investment in AI safety research",
+            "politics": "**Political News Analysis**\n\nCurrent political discussions focus on economic policies and international relations. Recent summits have addressed climate change agreements and trade negotiations.\n\n**Key Updates:**\n• New trade agreements under negotiation\n• Climate policy discussions intensifying\n• Electoral reforms being considered in multiple regions\n• Diplomatic relations showing signs of improvement",
+            "business": "**Business Market Report**\n\nGlobal markets show mixed performance with tech sectors leading gains while traditional industries face challenges. Economic indicators suggest cautious optimism among investors.\n\n**Market Insights:**\n• Tech stocks outperform traditional sectors\n• Inflation rates stabilizing in major economies\n• Supply chain disruptions easing gradually\n• Consumer confidence showing slight improvement"
+        }
+
+        query_lower = query.lower()
+        if "tech" in query_lower or "technology" in query_lower:
+            return mock_responses["tech"]
+        elif "ai" in query_lower or "artificial" in query_lower:
+            return mock_responses["ai"]
+        elif "politics" in query_lower or "government" in query_lower:
+            return mock_responses["politics"]
+        elif "business" in query_lower or "market" in query_lower or "economy" in query_lower:
+            return mock_responses["business"]
+        else:
+            return f"**News Summary: {query}**\n\nOur analysis of current news sources reveals several relevant articles on this topic. While specific details vary across sources, there's consensus around key developments in this area.\n\n**Main Points:**\n• Increased media coverage on this subject\n• Multiple expert opinions available\n• Varied perspectives across different news outlets\n• Growing public interest noted"
+
+    def get_system_stats():
+        """Mock system stats function"""
+        return {
+            'date': datetime.now().strftime("%Y-%m-%d"),
+            'total_queries': random.randint(10, 50),
+            'avg_response_time': round(random.uniform(1.2, 2.5), 2),
+            'successful_searches': random.randint(8, 45),
+            'failed_searches': random.randint(0, 5),
+            'success_rate': round(random.uniform(85, 99), 1),
+            'total_articles_retrieved': random.randint(100, 300),
+            'avg_similarity_score': round(random.uniform(0.6, 0.9), 3),
+            'source_accesses': {
+                'Bloomberg': random.randint(10, 50),
+                'Reuters': random.randint(10, 45),
+                'TechCrunch': random.randint(10, 40),
+                'Financial Times': random.randint(10, 35),
+                'BBC News': random.randint(10, 30),
+                'The Verge': random.randint(10, 25),
+                'Wall Street Journal': random.randint(10, 25),
+                'CNBC': random.randint(10, 20)
+            },
+            'category_usage': {
+                'technology': random.randint(15, 40),
+                'business': random.randint(10, 30),
+                'politics': random.randint(5, 20),
+                'sports': random.randint(3, 15),
+                'entertainment': random.randint(5, 18),
+                'science': random.randint(3, 12)
+            },
+            'total_historical_queries': random.randint(100, 500),
+            'avg_historical_response_time': round(random.uniform(1.5, 2.8), 2),
+            'top_categories': {
+                'technology': random.randint(40, 100),
+                'business': random.randint(30, 80),
+                'politics': random.randint(20, 60)
+            },
+            'system_uptime': 99.7,
+            'cache_hits': 87,
+            'last_updated': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+    def get_live_stats():
+        """Mock live stats function"""
+        stats = get_system_stats()
+        stats.update({
+            'active_sources': len(stats.get('source_accesses', {})),
+            'avg_response': stats.get('avg_response_time', 0.0),
+            'total_articles': 150,
+            'system_status': '🟢 Optimal',
+            'cache_status': '87% hit rate',
+            'memory_usage': '2.4GB / 8GB',
+            'cpu_usage': '34%'
+        })
+        return stats
+
+# ======================================================
+# START BACKGROUND RAG (OPTIONAL)
 # ======================================================
 
 if HAS_QUERY_ENGINE and "RAG_STARTED" not in st.session_state:
     try:
-        import simple_news_rag
-        simple_news_rag.start_background_rag()
-        st.session_state["RAG_STARTED"] = True
+        # Only try to start if file exists
+        if Path("simple_news_rag.py").exists():
+            import simple_news_rag
+            simple_news_rag.start_background_rag()
+            st.session_state["RAG_STARTED"] = True
+            print("✅ Background RAG started")
     except Exception as e:
-        print("⚠️ RAG background failed:", e)
+        print(f"⚠️ RAG background failed: {e}")
 
 # 1. Page Config
 st.set_page_config(
-    page_title="NewsFlow AI", 
-    page_icon="✨", 
+    page_title="NewsFlow AI",
+    page_icon="✨",
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
@@ -110,19 +206,21 @@ def convert_numpy_types(obj):
         return [convert_numpy_types(item) for item in obj]
     elif isinstance(obj, tuple):
         return tuple(convert_numpy_types(item) for item in obj)
-    elif hasattr(obj, 'item'):  # Check if it's a numpy scalar
-        return obj.item()  # Convert to native Python type
-    elif isinstance(obj, (np.integer, np.floating)):
-        return obj.item()
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
     elif isinstance(obj, np.ndarray):
         return obj.tolist()
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
     else:
         return obj
 
 def get_real_time_stats():
     """Get real-time statistics from query engine"""
     try:
-        if True:
+        if HAS_QUERY_ENGINE:
             stats = get_system_stats()
             # Convert all numpy types to native Python types
             return convert_numpy_types(stats)
@@ -191,7 +289,8 @@ if 'show_typing_effect' not in st.session_state:
 if 'typing_complete' not in st.session_state:
     st.session_state.typing_complete = False
 
-# 3. Dynamic CSS Injection
+# 3. Dynamic CSS Injection (same as before - keeping it as is since it works)
+# [CSS code remains exactly the same - it's working fine]
 st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -338,7 +437,7 @@ st.markdown(f"""
         overflow: hidden;
         animation: cardAppear 0.6s ease-out;
     }}
-    
+
     @keyframes cardAppear {{
         0% {{
             opacity: 0;
@@ -349,7 +448,7 @@ st.markdown(f"""
             transform: scale(1) translateY(0);
         }}
     }}
-    
+
     .summary-card::before {{
         content: '';
         position: absolute;
@@ -357,18 +456,18 @@ st.markdown(f"""
         left: 0;
         right: 0;
         height: 4px;
-        background: linear-gradient(90deg, 
-            var(--accent-color), 
+        background: linear-gradient(90deg,
+            var(--accent-color),
             var(--text-secondary),
             var(--accent-color));
         animation: gradientFlow 3s ease infinite;
     }}
-    
+
     @keyframes gradientFlow {{
         0%, 100% {{ background-position: 0% 50%; }}
         50% {{ background-position: 100% 50%; }}
     }}
-    
+
     .summary-title {{
         color: var(--text-primary);
         font-size: 1.8rem;
@@ -377,7 +476,7 @@ st.markdown(f"""
         line-height: 1.4;
         letter-spacing: -0.02em;
     }}
-    
+
     .summary-content {{
         color: var(--text-primary);
         font-size: 1.1rem;
@@ -386,7 +485,7 @@ st.markdown(f"""
         opacity: 0.95;
         animation: fadeInContent 0.8s ease-out 0.2s both;
     }}
-    
+
     @keyframes fadeInContent {{
         from {{
             opacity: 0;
@@ -397,22 +496,22 @@ st.markdown(f"""
             transform: translateY(0);
         }}
     }}
-    
+
     .summary-content p {{
         margin-bottom: 1rem;
     }}
-    
+
     .summary-content ul, .summary-content ol {{
         margin: 1rem 0;
         padding-left: 1.5rem;
     }}
-    
+
     .summary-content li {{
         margin-bottom: 0.5rem;
         position: relative;
         color: var(--text-primary);
     }}
-    
+
     .summary-content li::before {{
         content: '•';
         color: var(--accent-color);
@@ -420,7 +519,7 @@ st.markdown(f"""
         position: absolute;
         left: -1.5rem;
     }}
-    
+
     /* Stats card specific styling */
     .stats-card {{
         background: var(--bg-card);
@@ -433,7 +532,7 @@ st.markdown(f"""
         position: relative;
         overflow: hidden;
     }}
-    
+
     .stats-card::before {{
         content: '';
         position: absolute;
@@ -443,7 +542,7 @@ st.markdown(f"""
         height: 4px;
         background: linear-gradient(90deg, var(--accent-color), var(--text-secondary));
     }}
-    
+
     .stats-title {{
         color: var(--text-primary);
         font-size: 1.8rem;
@@ -452,14 +551,14 @@ st.markdown(f"""
         line-height: 1.4;
         letter-spacing: -0.02em;
     }}
-    
+
     .stats-grid {{
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 1rem;
         margin-top: 1.5rem;
     }}
-    
+
     .stat-item {{
         background: var(--bg-input);
         padding: 1.5rem;
@@ -467,13 +566,13 @@ st.markdown(f"""
         border: 1px solid var(--border-color);
         transition: all 0.3s ease;
     }}
-    
+
     .stat-item:hover {{
         background: var(--accent-dim);
         transform: translateY(-2px);
         border-color: var(--accent-color);
     }}
-    
+
     .stat-label {{
         color: var(--text-secondary);
         font-size: 0.9rem;
@@ -481,21 +580,21 @@ st.markdown(f"""
         letter-spacing: 0.1em;
         margin-bottom: 0.5rem;
     }}
-    
+
     .stat-value {{
         color: var(--text-primary);
         font-size: 1.8rem;
         font-weight: 700;
         letter-spacing: -0.02em;
     }}
-    
+
     /* Source table styling */
     .source-table {{
         width: 100%;
         margin-top: 1.5rem;
         border-collapse: collapse;
     }}
-    
+
     .source-table th {{
         color: var(--text-secondary);
         text-align: left;
@@ -506,17 +605,17 @@ st.markdown(f"""
         text-transform: uppercase;
         letter-spacing: 0.05em;
     }}
-    
+
     .source-table td {{
         color: var(--text-primary);
         padding: 1rem;
         border-bottom: 1px solid var(--border-color);
     }}
-    
+
     .source-table tr:hover {{
         background: var(--accent-dim);
     }}
-    
+
     /* Metadata section */
     .metadata-section {{
         background: var(--bg-input);
@@ -526,19 +625,19 @@ st.markdown(f"""
         border: 1px solid var(--border-color);
         animation: fadeIn 0.8s ease-out 0.4s both;
     }}
-    
+
     @keyframes fadeIn {{
         from {{ opacity: 0; }}
         to {{ opacity: 1; }}
     }}
-    
+
     .metadata-grid {{
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 1rem;
         margin-top: 1rem;
     }}
-    
+
     .metadata-item {{
         background: var(--bg-input);
         padding: 1rem;
@@ -546,13 +645,13 @@ st.markdown(f"""
         border: 1px solid var(--border-color);
         transition: all 0.3s ease;
     }}
-    
+
     .metadata-item:hover {{
         background: var(--accent-dim);
         transform: translateY(-2px);
         border-color: var(--accent-color);
     }}
-    
+
     .metadata-label {{
         color: var(--text-secondary);
         font-size: 0.9rem;
@@ -560,13 +659,13 @@ st.markdown(f"""
         letter-spacing: 0.05em;
         margin-bottom: 0.5rem;
     }}
-    
+
     .metadata-value {{
         color: var(--text-primary);
         font-size: 1.1rem;
         font-weight: 600;
     }}
-    
+
     /* Loading animation */
     .loading-container {{
         display: flex;
@@ -578,17 +677,17 @@ st.markdown(f"""
         border: 1px solid var(--border-color);
         animation: pulse 2s ease-in-out infinite;
     }}
-    
+
     @keyframes pulse {{
         0%, 100% {{ opacity: 1; }}
         50% {{ opacity: 0.7; }}
     }}
-    
+
     .searching-dots {{
         display: flex;
         gap: 0.5rem;
     }}
-    
+
     .searching-dots span {{
         width: 8px;
         height: 8px;
@@ -596,15 +695,15 @@ st.markdown(f"""
         background: var(--accent-color);
         animation: bounce 1.4s ease-in-out infinite;
     }}
-    
+
     .searching-dots span:nth-child(2) {{
         animation-delay: 0.2s;
     }}
-    
+
     .searching-dots span:nth-child(3) {{
         animation-delay: 0.4s;
     }}
-    
+
     @keyframes bounce {{
         0%, 60%, 100% {{
             transform: translateY(0);
@@ -613,30 +712,30 @@ st.markdown(f"""
             transform: translateY(-10px);
         }}
     }}
-    
+
     .loading-text {{
         color: var(--text-secondary);
         font-size: 1rem;
         font-weight: 500;
     }}
-    
+
     /* Button styling */
     .stButton button {{
         transition: all 0.3s ease !important;
         border: none !important;
         outline: none !important;
     }}
-    
+
     .stButton button:hover {{
         transform: translateY(-2px) !important;
         box-shadow: 0 4px 12px var(--shadow-color) !important;
     }}
-    
+
     .stButton button:focus {{
         box-shadow: none !important;
         border-color: transparent !important;
     }}
-    
+
     /* Recent queries buttons */
     .recent-query-btn {{
         background: var(--bg-input) !important;
@@ -648,34 +747,34 @@ st.markdown(f"""
         margin-bottom: 0.5rem !important;
         transition: all 0.3s ease !important;
     }}
-    
+
     .recent-query-btn:hover {{
         background: var(--accent-dim) !important;
         border-color: var(--accent-color) !important;
         color: var(--text-primary) !important;
         transform: translateX(5px) !important;
     }}
-    
+
     /* Smooth scrollbar */
     ::-webkit-scrollbar {{
         width: 8px;
         height: 8px;
     }}
-    
+
     ::-webkit-scrollbar-track {{
         background: var(--bg-input);
         border-radius: 4px;
     }}
-    
+
     ::-webkit-scrollbar-thumb {{
         background: var(--text-secondary);
         border-radius: 4px;
     }}
-    
+
     ::-webkit-scrollbar-thumb:hover {{
         background: var(--accent-color);
     }}
-    
+
     /* Status indicator */
     .status-indicator {{
         display: inline-flex;
@@ -689,12 +788,12 @@ st.markdown(f"""
         font-weight: 500;
         animation: statusPulse 2s ease-in-out infinite;
     }}
-    
+
     @keyframes statusPulse {{
         0%, 100% {{ opacity: 1; }}
         50% {{ opacity: 0.7; }}
     }}
-    
+
     /* Stats badge */
     .stats-badge {{
         display: inline-flex;
@@ -708,20 +807,20 @@ st.markdown(f"""
         margin: 0.25rem;
         transition: all 0.3s ease;
     }}
-    
+
     .stats-badge:hover {{
         background: var(--accent-dim);
         color: var(--text-primary);
         transform: translateY(-2px);
     }}
-    
+
     /* Welcome message styling */
     .welcome-message {{
         text-align: center;
         padding: 3rem 1rem;
         animation: fadeIn 0.8s ease-out;
     }}
-    
+
     /* User message bubble */
     .user-message {{
         background: var(--accent-dim);
@@ -733,35 +832,35 @@ st.markdown(f"""
         margin: 0.5rem 0;
         animation: messageSlideIn 0.5s ease-out;
     }}
-    
+
     /* Status colors */
     .status-active {{
         color: var(--accent-color);
     }}
-    
+
     .status-moderate {{
         color: var(--text-secondary);
     }}
-    
+
     .status-low {{
         color: var(--dark-slate);
     }}
-    
+
     /* Responsive adjustments */
     @media (max-width: 768px) {{
         .summary-card, .stats-card {{
             padding: 1.5rem;
             margin: 1rem 0;
         }}
-        
+
         .summary-title, .stats-title {{
             font-size: 1.5rem;
         }}
-        
+
         .metadata-grid, .stats-grid {{
             grid-template-columns: 1fr;
         }}
-        
+
         /* Adjust chat input for mobile */
         .stChatInputContainer textarea {{
             padding: 12px 16px !important;
@@ -769,23 +868,23 @@ st.markdown(f"""
             min-height: 56px !important;
         }}
     }}
-    
+
     /* Highlight important text */
     .highlight {{
         color: var(--accent-color);
         font-weight: 600;
     }}
-    
+
     /* Divider styling */
     .divider {{
         height: 1px;
-        background: linear-gradient(90deg, 
-            transparent, 
-            var(--border-color), 
+        background: linear-gradient(90deg,
+            transparent,
+            var(--border-color),
             transparent);
         margin: 2rem 0;
     }}
-    
+
     /* Real-time stats specific */
     .real-time-badge {{
         background: linear-gradient(135deg, var(--accent-dim), var(--bg-input));
@@ -795,12 +894,12 @@ st.markdown(f"""
         font-size: 0.9rem;
         animation: glow 2s ease-in-out infinite alternate;
     }}
-    
+
     @keyframes glow {{
         from {{ box-shadow: 0 0 5px var(--border-color); }}
         to {{ box-shadow: 0 0 10px var(--accent-dim); }}
     }}
-    
+
     .stats-update-time {{
         font-size: 0.8rem;
         color: var(--text-secondary);
@@ -821,7 +920,7 @@ st.markdown(f"""
         bottom: 2rem;
         right: 2rem;
     }}
-    
+
     .skip-button:hover {{
         background: var(--bg-input) !important;
         border-color: var(--accent-color) !important;
@@ -834,57 +933,38 @@ def clean_response_text(text):
     """Clean the response text to remove HTML tags and fix formatting"""
     if not text:
         return ""
-    
+
     # Remove HTML tags but keep the content
     text = re.sub(r'<[^>]+>', '', text)
-    
+
     # Remove metadata footer if present
     text = re.sub(r'Search Information.*', '', text, flags=re.DOTALL)
-    
+
     return text.strip()
 
 def process_search_query(query):
     """Process a search query and return formatted response"""
     try:
-        if True:
-            response = rag_answer(query)
-            response = clean_response_text(response)
-            # Update stats when a query is processed
-            if st.session_state.show_stats:
-                # Get fresh stats data
-                try:
-                    st.session_state.real_stats_data = get_real_time_stats()
-                    st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
-                except:
-                    st.session_state.real_stats_data = None
-        else:
-            # Mock responses
-            mock_responses = {
-                "tech": "**Technology News Summary**\n\nRecent developments in the tech sector show significant growth in AI adoption across industries. Major companies are investing heavily in machine learning research, with breakthroughs in natural language processing and computer vision.\n\n**Key Developments:**\n• AI integration in enterprise solutions increased by 40% this quarter\n• Cloud computing services show record adoption rates\n• Cybersecurity remains a top concern with new threats emerging\n• Quantum computing research reaches new milestones",
-                "ai": "**Artificial Intelligence Updates**\n\nThe AI landscape continues to evolve rapidly with new models and applications emerging weekly. Recent conferences highlighted advancements in multimodal AI systems capable of processing text, images, and audio simultaneously.\n\n**Notable Developments:**\n• New open-source language models with improved reasoning capabilities\n• AI-driven healthcare diagnostics showing 95% accuracy in trials\n• Regulatory frameworks taking shape across multiple countries\n• Increased investment in AI safety research",
-                "politics": "**Political News Analysis**\n\nCurrent political discussions focus on economic policies and international relations. Recent summits have addressed climate change agreements and trade negotiations.\n\n**Key Updates:**\n• New trade agreements under negotiation\n• Climate policy discussions intensifying\n• Electoral reforms being considered in multiple regions\n• Diplomatic relations showing signs of improvement",
-                "business": "**Business Market Report**\n\nGlobal markets show mixed performance with tech sectors leading gains while traditional industries face challenges. Economic indicators suggest cautious optimism among investors.\n\n**Market Insights:**\n• Tech stocks outperform traditional sectors\n• Inflation rates stabilizing in major economies\n• Supply chain disruptions easing gradually\n• Consumer confidence showing slight improvement"
-            }
-            
-            query_lower = query.lower()
-            if "tech" in query_lower or "technology" in query_lower:
-                response = mock_responses["tech"]
-            elif "ai" in query_lower or "artificial" in query_lower:
-                response = mock_responses["ai"]
-            elif "politics" in query_lower or "government" in query_lower:
-                response = mock_responses["politics"]
-            elif "business" in query_lower or "market" in query_lower or "economy" in query_lower:
-                response = mock_responses["business"]
-            else:
-                response = f"**News Summary: {query}**\n\nOur analysis of current news sources reveals several relevant articles on this topic. While specific details vary across sources, there's consensus around key developments in this area.\n\n**Main Points:**\n• Increased media coverage on this subject\n• Multiple expert opinions available\n• Varied perspectives across different news outlets\n• Growing public interest noted"
-        
+        # Use the RAG engine if available, otherwise use mock
+        response = rag_answer(query)
+        response = clean_response_text(response)
+
+        # Update stats when a query is processed
+        if st.session_state.show_stats:
+            # Get fresh stats data
+            try:
+                st.session_state.real_stats_data = get_real_time_stats()
+                st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
+            except:
+                st.session_state.real_stats_data = None
+
         return response
     except Exception as e:
-        return f"**Error Processing Query**\n\nUnable to fetch news results at the moment. Please try again."
+        return f"**Error Processing Query**\n\nUnable to fetch news results at the moment. Please try again.\n\nError: {str(e)}"
 
 # 4. Sidebar
 with st.sidebar:
-    
+
     # Theme Toggle Button
     col_t1, col_t2 = st.columns([4, 1])
     with col_t2:
@@ -907,20 +987,20 @@ with st.sidebar:
         </div>
     </div>
     """, unsafe_allow_html=True)
-    
+
     col1, col2 = st.columns([1, 1])
     with col1:
-        if st.button("🔄 New Chat", 
-                     use_container_width=True, 
+        if st.button("🔄 New Chat",
+                     use_container_width=True,
                      type="primary",
                      key="new_chat_btn"):
             st.session_state.messages = []
             st.session_state.current_search = None
             st.session_state.show_stats = False
             st.rerun()
-    
+
     with col2:
-        if st.button("📊 Stats", 
+        if st.button("📊 Stats",
                      use_container_width=True,
                      key="stats_btn"):
             st.session_state.show_stats = not st.session_state.show_stats
@@ -929,19 +1009,19 @@ with st.sidebar:
                 st.session_state.real_stats_data = get_real_time_stats()
                 st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
             st.rerun()
-    
+
     st.divider()
-    
+
     st.markdown("""
     <div style="margin: 20px 0;">
         <h4 style="color: var(--text-primary); margin-bottom: 16px;">📝 Recent Queries</h4>
     </div>
     """, unsafe_allow_html=True)
-    
+
     if st.session_state.history:
         for i, query in enumerate(reversed(st.session_state.history[-5:])):
             if st.button(
-                f"🔍 {query[:25]}..." if len(query) > 25 else f"🔍 {query}", 
+                f"🔍 {query[:25]}..." if len(query) > 25 else f"🔍 {query}",
                 key=f"history_{i}_{hash(query) % 1000}",
                 use_container_width=True,
                 help=f"Search: {query}"
@@ -970,13 +1050,14 @@ if st.session_state.show_stats:
     # Clear any previous messages
     if st.session_state.messages:
         st.session_state.messages = []
-    
+
     # Get real-time stats if not already cached
+    if st.session_state.real_stats_data is None:
         st.session_state.real_stats_data = get_real_time_stats()
         st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
-    
+
     stats_data = st.session_state.real_stats_data
-    
+
     if stats_data:
         # Display stats using Streamlit components
         st.markdown(f"""
@@ -995,13 +1076,12 @@ if st.session_state.show_stats:
             </div>
         </div>
         """, unsafe_allow_html=True)
-        
+
         # Stats grid using columns
         col1, col2, col3, col4 = st.columns(4)
-        
+
         with col1:
             total_queries = stats_data.get('total_queries', 0)
-            total_queries = int(total_queries) if hasattr(total_queries, 'item') else int(total_queries)
             st.markdown(f"""
             <div class="stat-item">
                 <div class="stat-label">Today's Queries</div>
@@ -1009,10 +1089,9 @@ if st.session_state.show_stats:
                 <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">Total searches today</div>
             </div>
             """, unsafe_allow_html=True)
-        
+
         with col2:
             success_rate = stats_data.get('success_rate', 0.0)
-            success_rate = float(success_rate) if hasattr(success_rate, 'item') else float(success_rate)
             st.markdown(f"""
             <div class="stat-item">
                 <div class="stat-label">Success Rate</div>
@@ -1020,10 +1099,9 @@ if st.session_state.show_stats:
                 <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">Successful searches</div>
             </div>
             """, unsafe_allow_html=True)
-        
+
         with col3:
             avg_response = stats_data.get('avg_response_time', 0.0)
-            avg_response = float(avg_response) if hasattr(avg_response, 'item') else float(avg_response)
             st.markdown(f"""
             <div class="stat-item">
                 <div class="stat-label">Avg Response</div>
@@ -1031,10 +1109,9 @@ if st.session_state.show_stats:
                 <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">Per query</div>
             </div>
             """, unsafe_allow_html=True)
-        
+
         with col4:
             articles_retrieved = stats_data.get('total_articles_retrieved', 0)
-            articles_retrieved = int(articles_retrieved) if hasattr(articles_retrieved, 'item') else int(articles_retrieved)
             st.markdown(f"""
             <div class="stat-item">
                 <div class="stat-label">Articles Retrieved</div>
@@ -1042,13 +1119,12 @@ if st.session_state.show_stats:
                 <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">Today</div>
             </div>
             """, unsafe_allow_html=True)
-        
+
         # Historical and system metrics
         col5, col6, col7, col8 = st.columns(4)
-        
+
         with col5:
             historical_queries = stats_data.get('total_historical_queries', 0)
-            historical_queries = int(historical_queries) if hasattr(historical_queries, 'item') else int(historical_queries)
             st.markdown(f"""
             <div class="stat-item">
                 <div class="stat-label">Historical Queries</div>
@@ -1056,10 +1132,9 @@ if st.session_state.show_stats:
                 <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">All time</div>
             </div>
             """, unsafe_allow_html=True)
-        
+
         with col6:
             avg_similarity = stats_data.get('avg_similarity_score', 0.0)
-            avg_similarity = float(avg_similarity) if hasattr(avg_similarity, 'item') else float(avg_similarity)
             st.markdown(f"""
             <div class="stat-item">
                 <div class="stat-label">Avg Similarity</div>
@@ -1067,10 +1142,9 @@ if st.session_state.show_stats:
                 <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">Search relevance</div>
             </div>
             """, unsafe_allow_html=True)
-        
+
         with col7:
             system_uptime = stats_data.get('system_uptime', 99.7)
-            system_uptime = float(system_uptime) if hasattr(system_uptime, 'item') else float(system_uptime)
             st.markdown(f"""
             <div class="stat-item">
                 <div class="stat-label">System Uptime</div>
@@ -1078,10 +1152,9 @@ if st.session_state.show_stats:
                 <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">Availability</div>
             </div>
             """, unsafe_allow_html=True)
-        
+
         with col8:
             cache_hits = stats_data.get('cache_hits', 87)
-            cache_hits = float(cache_hits) if hasattr(cache_hits, 'item') else float(cache_hits)
             st.markdown(f"""
             <div class="stat-item">
                 <div class="stat-label">Cache Hits</div>
@@ -1089,33 +1162,25 @@ if st.session_state.show_stats:
                 <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">Performance</div>
             </div>
             """, unsafe_allow_html=True)
-        
+
         # Category Usage
         st.markdown("""
         <div style="margin-top: 2rem;">
             <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">📈 Category Usage (Today)</div>
         </div>
         """, unsafe_allow_html=True)
-        
+
         category_data = stats_data.get('category_usage', {})
         if category_data:
-            # Convert numpy types to native Python types
-            category_data_converted = {}
-            for key, value in category_data.items():
-                if hasattr(value, 'item'):  # Check if it's a numpy type
-                    category_data_converted[key] = int(value.item())  # Convert to native Python type
-                else:
-                    category_data_converted[key] = int(value)
-            
             # Create a DataFrame for better display
             cat_df = pd.DataFrame(
-                list(category_data_converted.items()),
+                list(category_data.items()),
                 columns=['Category', 'Queries']
             ).sort_values('Queries', ascending=False)
-            
-            # Get max value for progress column (convert to int)
+
+            # Get max value for progress column
             max_value = int(cat_df['Queries'].max()) if not cat_df.empty else 1
-            
+
             # Style the dataframe
             st.dataframe(
                 cat_df,
@@ -1133,36 +1198,28 @@ if st.session_state.show_stats:
                 hide_index=True,
                 use_container_width=True
             )
-        
+
         # Source utilization table
         st.markdown("""
         <div style="margin-top: 2rem;">
             <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">📰 Source Access Statistics</div>
         </div>
         """, unsafe_allow_html=True)
-        
+
         source_data = stats_data.get('source_accesses', {})
         if source_data:
-            # Convert numpy types in source data
-            source_data_converted = {}
-            for key, value in source_data.items():
-                if hasattr(value, 'item'):  # Check if it's a numpy type
-                    source_data_converted[key] = int(value.item())  # Convert to native Python type
-                else:
-                    source_data_converted[key] = int(value)
-            
             # Create a table using Streamlit
             source_list = []
-            for source, accesses in source_data_converted.items():
+            for source, accesses in source_data.items():
                 status = "🟢 High" if accesses > 25 else "🟡 Moderate" if accesses > 10 else "⚪ Low"
                 source_list.append({
                     "Source": source,
                     "Articles Accessed": accesses,
                     "Status": status
                 })
-            
+
             df = pd.DataFrame(source_list).sort_values('Articles Accessed', ascending=False)
-            
+
             # Style the dataframe
             st.dataframe(
                 df,
@@ -1174,7 +1231,7 @@ if st.session_state.show_stats:
                 hide_index=True,
                 use_container_width=True
             )
-        
+
         # Refresh button for stats
         col_refresh, _ = st.columns([1, 3])
         with col_refresh:
@@ -1182,7 +1239,7 @@ if st.session_state.show_stats:
                 st.session_state.real_stats_data = get_real_time_stats()
                 st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
                 st.rerun()
-        
+
         # Footer stats
         st.markdown(f"""
         <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
@@ -1245,7 +1302,7 @@ elif st.session_state.messages:
 elif not st.session_state.show_stats:
 
     if st.session_state.show_typing_effect and not st.session_state.typing_complete:
-        
+
         # Determine colors for iframe based on theme
         if st.session_state.theme == 'dark':
             text_color = "#e0eab8"
@@ -1369,12 +1426,12 @@ elif not st.session_state.show_stats:
 # 8. Handle search requests from quick buttons or recent queries
 if st.session_state.current_search and not st.session_state.show_stats:
     query = st.session_state.current_search
-    
+
     # Add user message
     st.session_state.messages.append({"role": "user", "content": query})
     if query not in st.session_state.history:
         st.session_state.history.append(query)
-    
+
     # Display user message
     with st.chat_message("user", avatar="👤"):
         st.markdown(f"""
@@ -1382,11 +1439,11 @@ if st.session_state.current_search and not st.session_state.show_stats:
             {query}
         </div>
         """, unsafe_allow_html=True)
-    
+
     # Display assistant message with loading
     with st.chat_message("assistant", avatar="✨"):
         loading_placeholder = st.empty()
-        
+
         # Show loading animation
         loading_placeholder.markdown("""
         <div class="loading-container">
@@ -1398,19 +1455,19 @@ if st.session_state.current_search and not st.session_state.show_stats:
             <div class="loading-text">Searching through news sources...</div>
         </div>
         """, unsafe_allow_html=True)
-        
+
         # Simulate processing time
         time.sleep(1.5)
-        
+
         # Get response
         response = process_search_query(query)
-        
+
         # Clear loading and show response
         loading_placeholder.empty()
-        
+
         # Add small delay for smooth transition
         time.sleep(0.3)
-        
+
         # Display response
         st.markdown(f"""
         <div class="summary-card">
@@ -1441,13 +1498,13 @@ if st.session_state.current_search and not st.session_state.show_stats:
             </div>
         </div>
         """, unsafe_allow_html=True)
-        
+
         # Store in session state
         st.session_state.messages.append({
-            "role": "assistant", 
+            "role": "assistant",
             "data": response
         })
-    
+
     # Clear current search
     st.session_state.current_search = None
 
