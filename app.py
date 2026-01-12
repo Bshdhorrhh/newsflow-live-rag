@@ -11,33 +11,6 @@ import streamlit.components.v1 as components
 import sqlite3
 from pathlib import Path
 
-# ======================================================
-# DEBUG INFORMATION
-# ======================================================
-
-print("=" * 50)
-
-# Add this new section HERE:
-print("\nAPI Key Check:")
-print(f"GEMINI_API_KEY present: {'Yes' if os.getenv('GEMINI_API_KEY') else 'No'}")
-print(f"NEWSAPI_KEY present: {'Yes' if os.getenv('NEWSAPI_KEY') else 'No'}")
-print(f"HAS_QUERY_ENGINE: {HAS_QUERY_ENGINE}")
-
-# Check query engine files in detail
-print("\nDetailed File Check:")
-for file in ['vectors.npy', 'metadata.json', 'query_engine.py', 'llm_router.py']:
-    path = Path(file)
-    if path.exists():
-        size = path.stat().st_size
-        print(f"✅ {file}: Exists ({size} bytes)")
-    else:
-        print(f"❌ {file}: Missing")
-
-print("=" * 50)
-
-
-# Add current folder to import path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # ======================================================
 # SAFE QUERY ENGINE LOADING
@@ -59,6 +32,42 @@ except ImportError as e:
 except Exception as e:
     print(f"❌ Error loading query engine: {e}")
     HAS_QUERY_ENGINE = False
+
+
+
+
+# ======================================================
+# DEBUG INFORMATION
+# ======================================================
+print("=" * 50)
+print("DEBUG: App starting on Streamlit Cloud")
+print(f"Python version: {sys.version}")
+print(f"Current directory: {os.getcwd()}")
+print(f"Files present: {os.listdir('.')}")
+
+# Check environment variables
+print("\nEnvironment Variables Check:")
+for var in ['GEMINI_API_KEY', 'NEWSAPI_KEY']:
+    value = os.getenv(var)
+    if value:
+        print(f"✅ {var}: Set (length: {len(value)})")
+    else:
+        print(f"⚠️ {var}: NOT SET")
+
+# Check if files exist
+print("\nFile Check:")
+for file in ['vectors.npy', 'metadata.json', 'query_engine.py']:
+    if os.path.exists(file):
+        print(f"✅ {file}: Exists")
+    else:
+        print(f"❌ {file}: Missing")
+
+print("=" * 50)
+
+# Add current folder to import path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+
 
 # ======================================================
 # MOCK FUNCTIONS FOR FALLBACK
