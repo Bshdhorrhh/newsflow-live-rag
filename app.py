@@ -1687,15 +1687,3 @@ st.markdown("""
 
 
 
-
-#will be removed afterwards
-
-
-# Temporary test code - remove after testing
-if st.button("🧪 TEST: Tech News Query", key="test_query"):
-    if HAS_QUERY_ENGINE:
-        result = rag_answer("latest technology news")
-        st.markdown("### Test Result:")
-        st.markdown(f"```\n{result[:500]}...\n```")
-    else:
-        st.error("Query engine not loaded")
