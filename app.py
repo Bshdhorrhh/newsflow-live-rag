@@ -1165,6 +1165,10 @@ with st.sidebar:
         </div>
         """, unsafe_allow_html=True)
 
+    # API key limit error check
+    if st.session_state.get('api_key_limit_exceeded', False):
+        st.error("⚠️ Gemini API error: 429 You exceeded your current quota... model: gemini-2.5-flash-lite")
+
     st.divider()
 
     # Debug button

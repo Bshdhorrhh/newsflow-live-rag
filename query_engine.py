@@ -646,13 +646,23 @@ def rag_answer(query: str) -> str:
     try:
         # Start timing
         search_start = time_module.time()
-        
+
         # Perform search
         results, intent_info = retrieve_enhanced(query)
-        
+
         # Generate summary and get tracking data
         summary, tracking_data = generate_multi_result_summary(query, results, intent_info)
-        
+
+        # Check if the summary contains API quota error
+        if "429 You exceeded your current quota" in summary:
+            # Set the flag for Streamlit
+            import sys
+            if 'streamlit' in sys.modules:
+                import streamlit as st
+                st.session_state.api_key_limit_exceeded = True
+            # Return the error message
+            return summary
+
         # Record stats
         stats_tracker.record_query(
             query=tracking_data['query'],
@@ -663,14 +673,26 @@ def rag_answer(query: str) -> str:
             sources_accessed=tracking_data['sources_accessed'],
             success=tracking_data['success']
         )
-        
+
         # Add performance info
         total_time = time_module.time() - search_start
         summary += f"\n\n⚡ **Performance:** Search completed in {total_time:.2f}s"
-        
+
         return summary
     except Exception as e:
-        # Record failed query
+        error_msg = str(e)
+
+        # Check if this is an API quota error
+        if "429 You exceeded your current quota" in error_msg:
+            # Set the flag for Streamlit
+            import sys
+            if 'streamlit' in sys.modules:
+                import streamlit as st
+                st.session_state.api_key_limit_exceeded = True
+            # Return the quota error message
+            return f"⚠️ Gemini API error: 429 You exceeded your current quota... model: gemini-2.5-flash-lite"
+
+        # Record failed query for other errors
         stats_tracker.record_query(
             query=query,
             category="unknown",
@@ -680,7 +702,7 @@ def rag_answer(query: str) -> str:
             sources_accessed=["Unknown"],
             success=False
         )
-        
+
         return f"""## ⚠️ Search Results for: {query}
 
 **Status:** Search completed with some limitations.
@@ -689,7 +711,7 @@ def rag_answer(query: str) -> str:
 
 **Suggested action:** Try a more specific query or different keywords.
 
-*Error details: {str(e)}*"""
+*Error details: {error_msg}*"""
 
 # ======================================================
 # STATS EXPORT FUNCTIONS FOR STREAMLIT

@@ -43,6 +43,29 @@ def llm_answer(prompt: str) -> str:
             return random.choice(MOCK_RESPONSES)
 
     except Exception as e:
+        error_str = str(e)
+        print(f"⚠️ Gemini API error: {error_str}")
+
+        # Check for API quota exceeded error
+        if "429" in error_str or "quota" in error_str.lower() or "exceeded" in error_str.lower():
+            # Set the flag for Streamlit to display error
+            try:
+                # We need to set this in Streamlit session state
+                # But we can't import streamlit here if it's not available
+                # Instead, we'll raise a specific exception that can be caught upstream
+                raise Exception("⚠️ Gemini API error: 429 You exceeded your current quota... model: gemini-2.5-flash-lite")
+            except:
+                # Fallback to mock response
+                import random
+                time.sleep(0.5)
+                return random.choice(MOCK_RESPONSES)
+        else:
+            # For other errors, fallback to mock response
+            import random
+            time.sleep(0.5)
+            return random.choice(MOCK_RESPONSES)
+
+    except Exception as e:
         print(f"⚠️ Gemini API error: {str(e)}")
         # Fallback to mock response
         import random
