@@ -126,8 +126,8 @@ try:
             sys.stdout.write("✅ SUCCESS: Query engine loaded\n")
 
             # Quick test
-            test_result = rag_answer("test")
-            sys.stdout.write(f"✅ Query engine test passed (response length: {len(test_result)})\n")
+            sys.stdout.write("✅ Query engine loaded (test skipped to save Gemini quota)\n")
+
 
         except Exception as import_err:
             sys.stdout.write(f"❌ Failed to import query_engine: {import_err}\n")
@@ -232,7 +232,7 @@ if not HAS_QUERY_ENGINE:
 # ======================================================
 
 # Disable background RAG for now to avoid Pathway issues
-if HAS_QUERY_ENGINE and "RAG_STARTED" not in st.session_state:
+if HAS_QUERY_ENGINE and "RAG_STARTED" not in st.session_state and os.getenv("ENABLE_BACKGROUND_RAG") == "1":
     try:
         # Check if NewsAPI key exists before starting
         NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
@@ -1063,24 +1063,27 @@ def clean_response_text(text):
 def process_search_query(query):
     """Process a search query and return formatted response"""
 
+    # 🚨 HARD STOP: do NOT call Gemini unless user clicked Send
+    if not st.session_state.get("user_submitted", False):
+        return ""
+
     try:
-        # Use the RAG engine if available, otherwise use mock
-        response = rag_answer(query)
+        response = rag_answer(query)   # Gemini runs ONLY here now
         response = clean_response_text(response)
 
-        # Update stats when a query is processed
+        # Update stats only after real user queries
         if st.session_state.show_stats:
-            # Get fresh stats data
             try:
                 st.session_state.real_stats_data = get_real_time_stats()
-                st.session_state.last_stats.update = datetime.now().strftime("%M:%M:%S")
+                st.session_state.last_stats_update = datetime.now().strftime("%M:%M:%S")
             except:
                 st.session_state.real_stats_data = None
 
         return response
 
     except Exception as e:
-        return f"**Error Processing Query**\n\nUnable to fetch news results at the moment. Please try again.\n\nError: {str(e)}"
+        return f"**Error Processing Query**\n\n{str(e)}"
+
 
 # 4. Sidebar
 with st.sidebar:
@@ -1567,11 +1570,16 @@ elif not st.session_state.show_stats:
         </div>
         """, unsafe_allow_html=True)
 
-# 8. Handle search requests from quick buttons or recent queries
-if st.session_state.current_search and not st.session_state.show_stats:
+    # 8. Handle search requests from quick buttons or recent queries
+    if (
+         st.session_state.current_search
+         and not st.session_state.show_stats
+         and st.session_state.get("user_submitted", False)  # 🔐 HARD GATE
+    ):
     query = st.session_state.current_search
 
     # Add user message
+
     st.session_state.messages.append({"role": "user", "content": query})
     if query not in st.session_state.history:
         st.session_state.history.append(query)
@@ -1605,6 +1613,8 @@ if st.session_state.current_search and not st.session_state.show_stats:
 
         # Get response
         response = process_search_query(query)
+        st.session_state.user_submitted = False   # 🔒 lock Gemini again
+
 
         # Clear loading and show response
         loading_placeholder.empty()
@@ -1657,8 +1667,8 @@ if not st.session_state.show_stats:
     if prompt := st.chat_input("Ask about news, technology, business, or any topic..."):
         if prompt.strip():
             st.session_state.current_search = prompt
-            st.session_state.show_stats = False
-            st.rerun()
+            st.session_state.user_submitted = True   # 🔓 allow Gemini ONCE
+
 
 # 10. Footer with same background as main content
 st.markdown("""
