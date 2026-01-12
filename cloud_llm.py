@@ -1,18 +1,16 @@
 import os
-from google import genai
+import google.generativeai as genai  # FIXED IMPORT
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not API_KEY:
     raise RuntimeError("❌ GEMINI_API_KEY not set")
 
-client = genai.Client(api_key=API_KEY)
+genai.configure(api_key=API_KEY)
 
-MODEL = "gemini-2.5-flash-lite"
+MODEL = "gemini-1.5-flash"  # Updated to a valid model name
 
 def llm(prompt: str, history=None):
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=prompt
-    )
+    model = genai.GenerativeModel(MODEL)
+    response = model.generate_content(prompt)
     return response.text

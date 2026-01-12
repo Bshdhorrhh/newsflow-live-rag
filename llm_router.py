@@ -1,5 +1,4 @@
 import os
-import google.genai as genai  # ← CHANGED IMPORT
 import time
 
 # Try to get API key from environment
@@ -24,17 +23,13 @@ def llm_answer(prompt: str) -> str:
         return random.choice(MOCK_RESPONSES)
 
     try:
-        # Configure Gemini with the new package
+        # Configure Gemini
+        import google.generativeai as genai
         genai.configure(api_key=API_KEY)
 
-        # Use the new client
-        client = genai.Client(api_key=API_KEY)
-
-        # Generate response
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=prompt
-        )
+        # Use the model
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(prompt)
 
         return response.text
 
