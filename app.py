@@ -1062,6 +1062,7 @@ def clean_response_text(text):
 
 def process_search_query(query):
     """Process a search query and return formatted response"""
+
     try:
         # Use the RAG engine if available, otherwise use mock
         response = rag_answer(query)
@@ -1072,11 +1073,12 @@ def process_search_query(query):
             # Get fresh stats data
             try:
                 st.session_state.real_stats_data = get_real_time_stats()
-                st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
+                st.session_state.last_stats.update = datetime.now().strftime("%M:%M:%S")
             except:
                 st.session_state.real_stats_data = None
 
         return response
+
     except Exception as e:
         return f"**Error Processing Query**\n\nUnable to fetch news results at the moment. Please try again.\n\nError: {str(e)}"
 
