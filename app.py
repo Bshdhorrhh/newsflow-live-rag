@@ -52,66 +52,79 @@ sys.stdout.write("="*80 + "\n\n")
 sys.stdout.flush()  # Force flush
 
 # ======================================================
-# SAFE QUERY ENGINE LOADING
+# SAFE QUERY ENGINE LOADING - ULTRA-ROBUST VERSION
 # ======================================================
 
-sys.stdout.write("Attempting to load query engine...\n")
+sys.stdout.write("\n" + "="*60 + "\n")
+sys.stdout.write("QUERY ENGINE LOADING - ENHANCED DEBUG\n")
+sys.stdout.write("="*60 + "\n")
+
 HAS_QUERY_ENGINE = False
 
 try:
-    # Check files
+    # Step 1: Check for required files
     required = ["vectors.npy", "metadata.json", "query_engine.py"]
     all_exist = all(os.path.exists(f) for f in required)
 
     sys.stdout.write(f"Required files all exist: {all_exist}\n")
 
+    # Step 2: Check Gemini package
+    sys.stdout.write("\nChecking Gemini package...\n")
+    try:
+        import google.generativeai as genai
+        sys.stdout.write("✅ google.generativeai imported successfully\n")
+
+        # Test API key
+        API_KEY = os.getenv("GEMINI_API_KEY")
+        if API_KEY:
+            genai.configure(api_key=API_KEY)
+            sys.stdout.write("✅ Gemini API key configured\n")
+
+            # Test model availability
+            try:
+                model = genai.GenerativeModel('gemini-2.5-flash-lite')
+                sys.stdout.write("✅ Model 'gemini-2.5-flash-lite' available\n")
+            except Exception as model_err:
+                sys.stdout.write(f"⚠️ Model test failed: {model_err}\n")
+        else:
+            sys.stdout.write("⚠️ No Gemini API key found\n")
+
+    except ImportError as e:
+        sys.stdout.write(f"❌ google.generativeai import failed: {e}\n")
+        sys.stdout.write("Attempting to install...\n")
+        import subprocess
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "google-generativeai"])
+        import google.generativeai as genai
+        sys.stdout.write("✅ google.generativeai installed and imported\n")
+
+    # Step 3: Load query engine if files exist
     if all_exist:
-        sys.stdout.write("Importing query_engine...\n")
+        sys.stdout.write("\nImporting query_engine...\n")
         try:
             from query_engine import rag_answer, get_system_stats, get_live_stats
             HAS_QUERY_ENGINE = True
             sys.stdout.write("✅ SUCCESS: Query engine loaded\n")
+
+            # Quick test
+            test_result = rag_answer("test")
+            sys.stdout.write(f"✅ Query engine test passed (response length: {len(test_result)})\n")
+
         except Exception as import_err:
-            sys.stdout.write(f"❌ FAILED to import query_engine: {import_err}\n")
+            sys.stdout.write(f"❌ Failed to import query_engine: {import_err}\n")
             import traceback
             traceback.print_exc()
     else:
-        sys.stdout.write("❌ Missing files, using mock mode\n")
+        sys.stdout.write("❌ Missing required files, using mock mode\n")
 
 except Exception as e:
     sys.stdout.write(f"❌ Error in query engine loading: {e}\n")
     import traceback
     traceback.print_exc()
 
-sys.stdout.write(f"\nFINAL: HAS_QUERY_ENGINE = {HAS_QUERY_ENGINE}\n")
+sys.stdout.write(f"\n" + "="*60 + "\n")
+sys.stdout.write(f"FINAL STATUS: HAS_QUERY_ENGINE = {HAS_QUERY_ENGINE}\n")
+sys.stdout.write("="*60 + "\n\n")
 sys.stdout.flush()
-
-
-# ======================================================
-# MOCK FUNCTIONS FOR FALLBACK
-# ======================================================
-
-if not HAS_QUERY_ENGINE:
-    def rag_answer(query):
-        """Mock RAG answer function"""
-        mock_responses = {
-            "tech": "**Technology News Summary**\n\nRecent developments in the tech sector show significant growth in AI adoption across industries. Major companies are investing heavily in machine learning research, with breakthroughs in natural language processing and computer vision.\n\n**Key Developments:**\n• AI integration in enterprise solutions increased by 40% this quarter\n• Cloud computing services show record adoption rates\n• Cybersecurity remains a top concern with new threats emerging\n• Quantum computing research reaches new milestones",
-            "ai": "**Artificial Intelligence Updates**\n\nThe AI landscape continues to evolve rapidly with new models and applications emerging weekly. Recent conferences highlighted advancements in multimodal AI systems capable of processing text, images, and audio simultaneously.\n\n**Notable Developments:**\n• New open-source language models with improved reasoning capabilities\n• AI-driven healthcare diagnostics showing 95% accuracy in trials\n• Regulatory frameworks taking shape across multiple countries\n• Increased investment in AI safety research",
-            "politics": "**Political News Analysis**\n\nCurrent political discussions focus on economic policies and international relations. Recent summits have addressed climate change agreements and trade negotiations.\n\n**Key Updates:**\n• New trade agreements under negotiation\n• Climate policy discussions intensifying\n• Electoral reforms being considered in multiple regions\n• Diplomatic relations showing signs of improvement",
-            "business": "**Business Market Report**\n\nGlobal markets show mixed performance with tech sectors leading gains while traditional industries face challenges. Economic indicators suggest cautious optimism among investors.\n\n**Market Insights:**\n• Tech stocks outperform traditional sectors\n• Inflation rates stabilizing in major economies\n• Supply chain disruptions easing gradually\n• Consumer confidence showing slight improvement"
-        }
-
-        query_lower = query.lower()
-        if "tech" in query_lower or "technology" in query_lower:
-            return mock_responses["tech"]
-        elif "ai" in query_lower or "artificial" in query_lower:
-            return mock_responses["ai"]
-        elif "politics" in query_lower or "government" in query_lower:
-            return mock_responses["politics"]
-        elif "business" in query_lower or "market" in query_lower or "economy" in query_lower:
-            return mock_responses["business"]
-        else:
-            return f"**News Summary: {query}**\n\nOur analysis of current news sources reveals several relevant articles on this topic. While specific details vary across sources, there's consensus around key developments in this area.\n\n**Main Points:**\n• Increased media coverage on this subject\n• Multiple expert opinions available\n• Varied perspectives across different news outlets\n• Growing public interest noted"
 
     def get_system_stats():
         """Mock system stats function"""

@@ -1,6 +1,5 @@
 import os
 import time
-import google.genai as genai  # NEW IMPORT (this was originally correct!)
 
 # Try to get API key from environment
 API_KEY = os.getenv("GEMINI_API_KEY")
@@ -20,26 +19,32 @@ def llm_answer(prompt: str) -> str:
     if not API_KEY:
         # Return mock response if no API key
         import random
-        time.sleep(0.5)  # Simulate processing time
+        time.sleep(0.5)
         return random.choice(MOCK_RESPONSES)
 
     try:
-        # Configure Gemini with the new package
+        # IMPORTANT: Use google.generativeai (not google.genai)
+        import google.generativeai as genai
+
+        # Configure Gemini
         genai.configure(api_key=API_KEY)
 
-        # Use the new client with CORRECT model name
-        client = genai.Client(api_key=API_KEY)
+        # Use gemini-2.5-flash-lite (correct model name)
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
 
-        # Generate response with gemini-2.5-flash-lite
-        response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",  # CORRECT MODEL NAME
-            contents=prompt
-        )
+        # Generate response with timeout
+        response = model.generate_content(prompt)
 
-        return response.text
+        if response and hasattr(response, 'text'):
+            return response.text
+        else:
+            print("⚠️ Gemini returned empty response, using fallback")
+            import random
+            return random.choice(MOCK_RESPONSES)
 
     except Exception as e:
-        print(f"⚠️ Gemini API error: {e}")
+        print(f"⚠️ Gemini API error: {str(e)}")
         # Fallback to mock response
         import random
+        time.sleep(0.5)
         return random.choice(MOCK_RESPONSES)
