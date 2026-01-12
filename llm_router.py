@@ -27,12 +27,12 @@ def llm_answer(prompt: str) -> str:
         # Configure Gemini with the new package
         genai.configure(api_key=API_KEY)
 
-        # Use the new client
+        # Use the new client with CORRECT model name
         client = genai.Client(api_key=API_KEY)
 
         # Generate response with gemini-2.5-flash-lite
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model="gemini-2.5-flash-lite",  # CORRECT MODEL NAME
             contents=prompt
         )
 
