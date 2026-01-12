@@ -322,6 +322,8 @@ if 'show_typing_effect' not in st.session_state:
     st.session_state.show_typing_effect = True
 if 'typing_complete' not in st.session_state:
     st.session_state.typing_complete = False
+if 'typing_signal_received' not in st.session_state:  # NEW: Track typing completion
+    st.session_state.typing_signal_received = False
 
 # 3. Dynamic CSS Injection (same as before - keeping it as is since it works)
 # [CSS code remains exactly the same - it's working fine]
@@ -940,19 +942,21 @@ st.markdown(f"""
         font-style: italic;
     }}
 
-    /* Skip button styling */
+    /* Skip button styling - FIXED */
     .skip-button {{
         background: var(--accent-dim) !important;
         border: 1px solid var(--border-color) !important;
         color: var(--text-primary) !important;
-        padding: 0.75rem 2rem !important;
+        padding: 0.5rem 1rem !important;
         border-radius: 12px !important;
-        font-size: 1rem !important;
+        font-size: 0.9rem !important;
         font-weight: 500 !important;
         transition: all 0.3s ease !important;
-        position: absolute;
-        bottom: 2rem;
-        right: 2rem;
+        margin-top: 1rem !important;
+        position: static !important;
+        bottom: auto !important;
+        right: auto !important;
+        display: inline-block !important;
     }}
 
     .skip-button:hover {{
@@ -1003,7 +1007,7 @@ with st.sidebar:
     col_t1, col_t2 = st.columns([4, 1])
     with col_t2:
         btn_emoji = "🌞" if st.session_state.theme == 'dark' else "🌙"
-        if st.button(btn_emoji, key="theme_toggle", help="Toggle Light/Dark Mode", width='stretch'):  # FIXED
+        if st.button(btn_emoji, key="theme_toggle", help="Toggle Light/Dark Mode", use_container_width=True):
             toggle_theme()
             st.rerun()
 
@@ -1027,7 +1031,7 @@ with st.sidebar:
         if st.button("🔄 New Chat",
                      type="primary",
                      key="new_chat_btn",
-                     width='stretch'):  # FIXED
+                     use_container_width=True):
             st.session_state.messages = []
             st.session_state.current_search = None
             st.session_state.show_stats = False
@@ -1036,7 +1040,7 @@ with st.sidebar:
     with col2:
         if st.button("📊 Stats",
                      key="stats_btn",
-                     width='stretch'):  # FIXED
+                     use_container_width=True):
             st.session_state.show_stats = not st.session_state.show_stats
             # Get fresh stats data when button is clicked
             if st.session_state.show_stats:
@@ -1057,7 +1061,7 @@ with st.sidebar:
             if st.button(
                 f"🔍 {query[:25]}..." if len(query) > 25 else f"🔍 {query}",
                 key=f"history_{i}_{hash(query) % 1000}",
-                width='stretch',  # FIXED
+                use_container_width=True,
                 help=f"Search: {query}"
             ):
                 st.session_state.current_search = query
@@ -1269,7 +1273,7 @@ if st.session_state.show_stats:
         # Refresh button for stats
         col_refresh, _ = st.columns([1, 3])
         with col_refresh:
-            if st.button("🔄 Refresh Stats", width='stretch'):  # FIXED
+            if st.button("🔄 Refresh Stats", use_container_width=True):
                 st.session_state.real_stats_data = get_real_time_stats()
                 st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
                 st.rerun()
@@ -1345,104 +1349,118 @@ elif not st.session_state.show_stats:
             text_color = "#2c3327"
             secondary_color = "#5c6355"
 
-        components.html(f"""
-        <style>
-        body {{
-            margin:0;
-            background: transparent;
-            overflow:hidden;
-        }}
-        .typing-container {{
-            display:flex;
-            flex-direction:column;
-            justify-content:center;
-            align-items:center;
-            height:100vh;
-            color:{text_color};
-            font-family:Inter,sans-serif;
-        }}
-        .main-title {{
-            font-size:4.5rem;
-            font-weight:900;
-            letter-spacing:-0.03em;
-        }}
-        .cursor {{
-            display:inline-block;
-            width:3px;
-            height:4.5rem;
-            background:{text_color};
-            margin-left:5px;
-            animation: blink 1s infinite;
-        }}
-        @keyframes blink {{
-            0%,100%{{opacity:1}}
-            50%{{opacity:0}}
-        }}
-        .team {{
-            margin-top:2rem;
-            font-size:1.5rem;
-            color:{secondary_color};
-            opacity:0;
-            animation:fadein 1s forwards;
-            animation-delay:2s;
-            text-align: center;
-            line-height: 1.6;
-        }}
+        # Create a container for the typing animation
+        typing_container = st.container()
 
-
-        @keyframes fadein{{
-            to{{opacity:1}}
-        }}
-        </style>
-
-        <div class="typing-container">
-            <div class="main-title">
-                <span id="text"></span><span class="cursor"></span>
-            </div>
-            <div class="team">
-                Team Corner Stone<br>
-                Arpit Behera • Sagar Sahu • Keertan Kumar • Asim Khamari
-            </div>
-        </div>
-
-        <script>
-        const text = "NewsFlow AI";
-        let i = 0;
-
-        function type() {{
-            if (i < text.length) {{
-                document.getElementById("text").innerHTML += text.charAt(i);
-                i++;
-                setTimeout(type, 100);
-            }} else {{
-                setTimeout(() => {{
-                    window.parent.postMessage("typing_complete", "*");
-                }}, 3000);
+        with typing_container:
+            components.html(f"""
+            <style>
+            body {{
+                margin:0;
+                background: transparent;
+                overflow:hidden;
             }}
-        }}
-        type();
-        </script>
-        """, height=600)
+            .typing-container {{
+                display:flex;
+                flex-direction:column;
+                justify-content:center;
+                align-items:center;
+                height:100vh;
+                color:{text_color};
+                font-family:Inter,sans-serif;
+            }}
+            .main-title {{
+                font-size:4.5rem;
+                font-weight:900;
+                letter-spacing:-0.03em;
+            }}
+            .cursor {{
+                display:inline-block;
+                width:3px;
+                height:4.5rem;
+                background:{text_color};
+                margin-left:5px;
+                animation: blink 1s infinite;
+            }}
+            @keyframes blink {{
+                0%,100%{{opacity:1}}
+                50%{{opacity:0}}
+            }}
+            .team {{
+                margin-top:2rem;
+                font-size:1.5rem;
+                color:{secondary_color};
+                opacity:0;
+                animation:fadein 1s forwards;
+                animation-delay:2s;
+                text-align: center;
+                line-height: 1.6;
+            }}
 
-        # Listen for JS signal
-        msg = components.html("""
-        <script>
-        window.addEventListener("message", (event) => {
-            if (event.data === "typing_complete") {
-                const el = document.createElement("input");
-                el.type = "hidden";
-                el.name = "typing_signal";
-                el.value = "done";
-                document.body.appendChild(el);
-            }
-        });
-        </script>
-        """, height=0)
+            @keyframes fadein{{
+                to{{opacity:1}}
+            }}
+            </style>
 
-        if st.button("⏭ Skip Intro", width='stretch'):  # FIXED
-            st.session_state.show_typing_effect = False
-            st.session_state.typing_complete = True
-            st.rerun()
+            <div class="typing-container">
+                <div class="main-title">
+                    <span id="text"></span><span class="cursor"></span>
+                </div>
+                <div class="team">
+                    Team Corner Stone<br>
+                    Arpit Behera • Sagar Sahu • Keertan Kumar • Asim Khamari
+                </div>
+            </div>
+
+            <script>
+            const text = "NewsFlow AI";
+            let i = 0;
+
+            function type() {{
+                if (i < text.length) {{
+                    document.getElementById("text").innerHTML += text.charAt(i);
+                    i++;
+                    setTimeout(type, 100);
+                }} else {{
+                    setTimeout(() => {{
+                        window.parent.postMessage("typing_complete", "*");
+                    }}, 3000);
+                }}
+            }}
+            type();
+            </script>
+            """, height=600)
+
+            # Listen for JS signal - simplified approach
+            try:
+                # Create a simple script to listen for messages
+                components.html("""
+                <script>
+                window.addEventListener("message", (event) => {
+                    if (event.data === "typing_complete") {
+                        // Send a signal back to Streamlit
+                        window.parent.postMessage({type: "streamlit:setComponentValue", value: "typing_done"}, "*");
+                    }
+                });
+                </script>
+                """, height=0)
+
+                # Check if we should skip (timeout after 8 seconds)
+                if st.session_state.get('typing_signal_received', False):
+                    st.session_state.show_typing_effect = False
+                    st.session_state.typing_complete = True
+                    st.rerun()
+
+            except:
+                pass
+
+            # FIXED: Skip button placed properly within the container
+            col1, col2, col3 = st.columns([2, 1, 2])
+            with col2:
+                if st.button("⏭ Skip Intro", key="skip_intro", use_container_width=True, type="secondary"):
+                    st.session_state.show_typing_effect = False
+                    st.session_state.typing_complete = True
+                    st.rerun()
 
     else:
         # Normal welcome page
@@ -1454,8 +1472,6 @@ elif not st.session_state.show_stats:
             </p>
         </div>
         """, unsafe_allow_html=True)
-
-
 
 # 8. Handle search requests from quick buttons or recent queries
 if st.session_state.current_search and not st.session_state.show_stats:
