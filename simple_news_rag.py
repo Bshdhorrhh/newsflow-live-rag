@@ -121,6 +121,12 @@ def poll_newsapi():
                     seen = set(json.load(f))
 
                 new_rows = []
+                                # Debug print
+                if new_rows:
+                    print(f"📰 NEW ARTICLE ADDED:")
+                    print(f"   Title: {article.get('title', 'No title')}")
+                    print(f"   Source: {article.get('source', {}).get('name', 'Unknown')}")
+                    print(f"   URL: {url}")
                 for article in data.get("articles", []):
                     url = article.get("url")
                     if not url or url in seen:

@@ -32,6 +32,28 @@ sys.stdout.write("\n" + "-"*80 + "\n")
 sys.stdout.write("Checking for key files:\n")
 
 key_files = ['vectors.npy', 'metadata.json', 'query_engine.py', 'llm_router.py', 'app.py']
+# Add this after line 34 in your app.py (after imports)
+print("\n=== NEWS DATABASE DEBUG ===")
+try:
+    import csv
+    with open('live_news.csv', 'r') as f:
+        reader = csv.DictReader(f)
+        articles = list(reader)
+        print(f"📊 Total articles in database: {len(articles)}")
+
+        # Show recent articles
+        print("\n📰 Recent 5 articles:")
+        for i, article in enumerate(articles[-5:]):
+            title = article.get('title', 'No title')
+            print(f"  {i+1}. {title[:80]}...")
+
+        # Show categories
+        print("\n🔍 Checking for tech articles:")
+        tech_articles = [a for a in articles if 'tech' in a.get('title', '').lower() or 'ai' in a.get('title', '').lower()]
+        print(f"   Found {len(tech_articles)} tech-related articles")
+
+except Exception as e:
+    print(f"❌ Error reading news: {e}")
 for file in key_files:
     if os.path.exists(file):
         size = os.path.getsize(file)
@@ -1141,6 +1163,14 @@ with st.sidebar:
         </div>
         """, unsafe_allow_html=True)
 
+            st.divider()
+
+    # Debug button
+    if st.button("🐛 Test Search", key="debug_test", use_container_width=True):
+        st.session_state.current_search = "technology news"
+        st.session_state.show_stats = False
+        st.rerun()
+
 # 5. Display system stats if requested
 if st.session_state.show_stats:
     # Clear any previous messages
@@ -1645,3 +1675,21 @@ st.markdown("""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+
+
+
+
+
+
+#will be removed afterwards
+
+
+# Temporary test code - remove after testing
+if st.button("🧪 TEST: Tech News Query", key="test_query"):
+    if HAS_QUERY_ENGINE:
+        result = rag_answer("latest technology news")
+        st.markdown("### Test Result:")
+        st.markdown(f"```\n{result[:500]}...\n```")
+    else:
+        st.error("Query engine not loaded")
