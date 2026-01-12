@@ -601,7 +601,7 @@ Format the response to be informative and well-structured."""
             raise  # Re-raise quota errors
 
 ---
-📊 **Search Information**
+"📊 **Search Information**"
 • Query: "{query}"
 • Category: {intent_info['primary'].title()}
 • Articles analyzed: {result_count}
