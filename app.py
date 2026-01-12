@@ -1571,96 +1571,34 @@ elif not st.session_state.show_stats:
         """, unsafe_allow_html=True)
 
     # 8. Handle search requests from quick buttons or recent queries
-    if (
-         st.session_state.current_search
-         and not st.session_state.show_stats
-         and st.session_state.get("user_submitted", False)  # 🔐 HARD GATE
-    ):
-    query = st.session_state.current_search
+         if (
+                st.session_state.current_search
+                and not st.session_state.show_stats
+                and st.session_state.get("user_submitted", False)   # 🔐 Gemini gate
+         ):
+              query = st.session_state.current_search
 
-    # Add user message
-
-    st.session_state.messages.append({"role": "user", "content": query})
-    if query not in st.session_state.history:
-        st.session_state.history.append(query)
-
-    # Display user message
-    with st.chat_message("user", avatar="👤"):
-        st.markdown(f"""
-        <div class="user-message">
-            {query}
-        </div>
-        """, unsafe_allow_html=True)
-
-    # Display assistant message with loading
-    with st.chat_message("assistant", avatar="✨"):
-        loading_placeholder = st.empty()
-
-        # Show loading animation
-        loading_placeholder.markdown("""
-        <div class="loading-container">
-            <div class="searching-dots">
-                <span></span>
-                <span></span>
-                <span></span>
-            </div>
-            <div class="loading-text">Searching through news sources...</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Simulate processing time
-        time.sleep(1.5)
-
-        # Get response
-        response = process_search_query(query)
-        st.session_state.user_submitted = False   # 🔒 lock Gemini again
-
-
-        # Clear loading and show response
-        loading_placeholder.empty()
-
-        # Add small delay for smooth transition
-        time.sleep(0.3)
-
-        # Display response
-        st.markdown(f"""
-        <div class="summary-card">
-            <div class="summary-title">📰 News Analysis</div>
-            <div class="summary-content">
-                {response}
-            </div>
-            <div class="metadata-section">
-                <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">📊 SEARCH METADATA</div>
-                <div class="metadata-grid">
-                    <div class="metadata-item">
-                        <div class="metadata-label">Query</div>
-                        <div class="metadata-value">{query[:30]}{'...' if len(query) > 30 else ''}</div>
-                    </div>
-                    <div class="metadata-item">
-                        <div class="metadata-label">Sources Analyzed</div>
-                        <div class="metadata-value">5+ news sources</div>
-                    </div>
-                    <div class="metadata-item">
-                        <div class="metadata-label">Processing Time</div>
-                        <div class="metadata-value">1.2 seconds</div>
-                    </div>
-                    <div class="metadata-item">
-                        <div class="metadata-label">Confidence</div>
-                        <div class="metadata-value">High</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Store in session state
+         # Add user message
         st.session_state.messages.append({
-            "role": "assistant",
-            "data": response
-        })
+        "role": "user",
+        "content": query
+    })
 
-    # Clear current search
+         # Generate response (Gemini runs ONLY here)
+         response = process_search_query(query)
+
+           # 🔒 Lock Gemini immediately after use
+          st.session_state.user_submitted = False
+
+            # Add assistant message
+         st.session_state.messages.append({
+             "role": "assistant",
+             "content": response
+    })
+
+    # Clear current search so it won't rerun
     st.session_state.current_search = None
+
 
 # 9. Handle chat input (only if not showing stats)
 if not st.session_state.show_stats:
