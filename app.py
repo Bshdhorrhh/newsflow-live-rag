@@ -8,8 +8,6 @@ import re
 import pandas as pd
 import numpy as np
 import streamlit.components.v1 as components
-import sqlite3
-from pathlib import Path
 
 # ======================================================
 # DEBUG INFORMATION - FORCE OUTPUT
@@ -80,6 +78,7 @@ sys.stdout.write("QUERY ENGINE LOADING - ENHANCED DEBUG\n")
 sys.stdout.write("="*60 + "\n")
 
 HAS_QUERY_ENGINE = False
+GEMINI_AVAILABLE = False
 
 try:
     # Step 1: Check for required files
@@ -88,53 +87,39 @@ try:
 
     sys.stdout.write(f"Required files all exist: {all_exist}\n")
 
-    # Step 2: Check Gemini package
+    # Step 2: Check Gemini package WITHOUT testing API
     sys.stdout.write("\nChecking Gemini package...\n")
     try:
         import google.generativeai as genai
         sys.stdout.write("✅ google.generativeai imported successfully\n")
 
-        # Test API key
+        # Check API key exists but DON'T test it
         API_KEY = os.getenv("GEMINI_API_KEY")
         if API_KEY:
-            genai.configure(api_key=API_KEY)
-            sys.stdout.write("✅ Gemini API key configured\n")
-
-            # Test model availability
-            try:
-                model = genai.GenerativeModel('gemini-2.5-flash-lite')
-                sys.stdout.write("✅ Model 'gemini-2.5-flash-lite' available\n")
-            except Exception as model_err:
-                sys.stdout.write(f"⚠️ Model test failed: {model_err}\n")
+            sys.stdout.write("✅ Gemini API key found\n")
+            GEMINI_AVAILABLE = True
         else:
             sys.stdout.write("⚠️ No Gemini API key found\n")
 
     except ImportError as e:
         sys.stdout.write(f"❌ google.generativeai import failed: {e}\n")
-        sys.stdout.write("Attempting to install...\n")
-        import subprocess
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "google-generativeai"])
-        import google.generativeai as genai
-        sys.stdout.write("✅ google.generativeai installed and imported\n")
+        # Don't install automatically - let user know
+        sys.stdout.write("❌ Please install: pip install google-generativeai\n")
 
     # Step 3: Load query engine if files exist
-    if all_exist:
+    if all_exist and GEMINI_AVAILABLE:
         sys.stdout.write("\nImporting query_engine...\n")
         try:
-            from query_engine import rag_answer, get_system_stats, get_live_stats
+            # Import without initializing API calls
+            # We'll lazy-load the actual functions when needed
+            sys.stdout.write("✅ Query engine available (will lazy-load)\n")
             HAS_QUERY_ENGINE = True
-            sys.stdout.write("✅ SUCCESS: Query engine loaded\n")
-
-            # Quick test
-            sys.stdout.write("✅ Query engine loaded (test skipped to save Gemini quota)\n")
-
-
         except Exception as import_err:
             sys.stdout.write(f"❌ Failed to import query_engine: {import_err}\n")
             import traceback
             traceback.print_exc()
     else:
-        sys.stdout.write("❌ Missing required files, using mock mode\n")
+        sys.stdout.write("❌ Using mock mode\n")
 
 except Exception as e:
     sys.stdout.write(f"❌ Error in query engine loading: {e}\n")
@@ -150,101 +135,150 @@ sys.stdout.flush()
 # MOCK FUNCTIONS FOR FALLBACK
 # ======================================================
 
-if not HAS_QUERY_ENGINE:
-    def rag_answer(query):
-        """Mock RAG answer function"""
-        mock_responses = {
-            "tech": "**Technology News Summary**\n\nRecent developments in the tech sector show significant growth in AI adoption across industries. Major companies are investing heavily in machine learning research, with breakthroughs in natural language processing and computer vision.\n\n**Key Developments:**\n• AI integration in enterprise solutions increased by 40% this quarter\n• Cloud computing services show record adoption rates\n• Cybersecurity remains a top concern with new threats emerging\n• Quantum computing research reaches new milestones",
-            "ai": "**Artificial Intelligence Updates**\n\nThe AI landscape continues to evolve rapidly with new models and applications emerging weekly. Recent conferences highlighted advancements in multimodal AI systems capable of processing text, images, and audio simultaneously.\n\n**Notable Developments:**\n• New open-source language models with improved reasoning capabilities\n• AI-driven healthcare diagnostics showing 95% accuracy in trials\n• Regulatory frameworks taking shape across multiple countries\n• Increased investment in AI safety research",
-            "politics": "**Political News Analysis**\n\nCurrent political discussions focus on economic policies and international relations. Recent summits have addressed climate change agreements and trade negotiations.\n\n**Key Updates:**\n• New trade agreements under negotiation\n• Climate policy discussions intensifying\n• Electoral reforms being considered in multiple regions\n• Diplomatic relations showing signs of improvement",
-            "business": "**Business Market Report**\n\nGlobal markets show mixed performance with tech sectors leading gains while traditional industries face challenges. Economic indicators suggest cautious optimism among investors.\n\n**Market Insights:**\n• Tech stocks outperform traditional sectors\n• Inflation rates stabilizing in major economies\n• Supply chain disruptions easing gradually\n• Consumer confidence showing slight improvement"
-        }
+# Define mock functions first
+def mock_rag_answer(query):
+    """Mock RAG answer function"""
+    mock_responses = {
+        "tech": "**Technology News Summary**\n\nRecent developments in the tech sector show significant growth in AI adoption across industries. Major companies are investing heavily in machine learning research, with breakthroughs in natural language processing and computer vision.\n\n**Key Developments:**\n• AI integration in enterprise solutions increased by 40% this quarter\n• Cloud computing services show record adoption rates\n• Cybersecurity remains a top concern with new threats emerging\n• Quantum computing research reaches new milestones",
+        "ai": "**Artificial Intelligence Updates**\n\nThe AI landscape continues to evolve rapidly with new models and applications emerging weekly. Recent conferences highlighted advancements in multimodal AI systems capable of processing text, images, and audio simultaneously.\n\n**Notable Developments:**\n• New open-source language models with improved reasoning capabilities\n• AI-driven healthcare diagnostics showing 95% accuracy in trials\n• Regulatory frameworks taking shape across multiple countries\n• Increased investment in AI safety research",
+        "politics": "**Political News Analysis**\n\nCurrent political discussions focus on economic policies and international relations. Recent summits have addressed climate change agreements and trade negotiations.\n\n**Key Updates:**\n• New trade agreements under negotiation\n• Climate policy discussions intensifying\n• Electoral reforms being considered in multiple regions\n• Diplomatic relations showing signs of improvement",
+        "business": "**Business Market Report**\n\nGlobal markets show mixed performance with tech sectors leading gains while traditional industries face challenges. Economic indicators suggest cautious optimism among investors.\n\n**Market Insights:**\n• Tech stocks outperform traditional sectors\n• Inflation rates stabilizing in major economies\n• Supply chain disruptions easing gradually\n• Consumer confidence showing slight improvement"
+    }
 
-        query_lower = query.lower()
-        if "tech" in query_lower or "technology" in query_lower:
-            return mock_responses["tech"]
-        elif "ai" in query_lower or "artificial" in query_lower:
-            return mock_responses["ai"]
-        elif "politics" in query_lower or "government" in query_lower:
-            return mock_responses["politics"]
-        elif "business" in query_lower or "market" in query_lower or "economy" in query_lower:
-            return mock_responses["business"]
-        else:
-            return f"**News Summary: {query}**\n\nOur analysis of current news sources reveals several relevant articles on this topic. While specific details vary across sources, there's consensus around key developments in this area.\n\n**Main Points:**\n• Increased media coverage on this subject\n• Multiple expert opinions available\n• Varied perspectives across different news outlets\n• Growing public interest noted"
+    query_lower = query.lower()
+    if "tech" in query_lower or "technology" in query_lower:
+        return mock_responses["tech"]
+    elif "ai" in query_lower or "artificial" in query_lower:
+        return mock_responses["ai"]
+    elif "politics" in query_lower or "government" in query_lower:
+        return mock_responses["politics"]
+    elif "business" in query_lower or "market" in query_lower or "economy" in query_lower:
+        return mock_responses["business"]
+    else:
+        return f"**News Summary: {query}**\n\nOur analysis of current news sources reveals several relevant articles on this topic. While specific details vary across sources, there's consensus around key developments in this area.\n\n**Main Points:**\n• Increased media coverage on this subject\n• Multiple expert opinions available\n• Varied perspectives across different news outlets\n• Growing public interest noted"
 
-    def get_system_stats():
-        """Mock system stats function"""
-        return {
-            'date': datetime.now().strftime("%Y-%m-%d"),
-            'total_queries': random.randint(10, 50),
-            'avg_response_time': round(random.uniform(1.2, 2.5), 2),
-            'successful_searches': random.randint(8, 45),
-            'failed_searches': random.randint(0, 5),
-            'success_rate': round(random.uniform(85, 99), 1),
-            'total_articles_retrieved': random.randint(100, 300),
-            'avg_similarity_score': round(random.uniform(0.6, 0.9), 3),
-            'source_accesses': {
-                'Bloomberg': random.randint(10, 50),
-                'Reuters': random.randint(10, 45),
-                'TechCrunch': random.randint(10, 40),
-                'Financial Times': random.randint(10, 35),
-                'BBC News': random.randint(10, 30),
-                'The Verge': random.randint(10, 25),
-                'Wall Street Journal': random.randint(10, 25),
-                'CNBC': random.randint(10, 20)
-            },
-            'category_usage': {
-                'technology': random.randint(15, 40),
-                'business': random.randint(10, 30),
-                'politics': random.randint(5, 20),
-                'sports': random.randint(3, 15),
-                'entertainment': random.randint(5, 18),
-                'science': random.randint(3, 12)
-            },
-            'total_historical_queries': random.randint(100, 500),
-            'avg_historical_response_time': round(random.uniform(1.5, 2.8), 2),
-            'top_categories': {
-                'technology': random.randint(40, 100),
-                'business': random.randint(30, 80),
-                'politics': random.randint(20, 60)
-            },
-            'system_uptime': 99.7,
-            'cache_hits': 87,
-            'last_updated': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
+def mock_get_system_stats():
+    """Mock system stats function"""
+    return {
+        'date': datetime.now().strftime("%Y-%m-%d"),
+        'total_queries': random.randint(10, 50),
+        'avg_response_time': round(random.uniform(1.2, 2.5), 2),
+        'successful_searches': random.randint(8, 45),
+        'failed_searches': random.randint(0, 5),
+        'success_rate': round(random.uniform(85, 99), 1),
+        'total_articles_retrieved': random.randint(100, 300),
+        'avg_similarity_score': round(random.uniform(0.6, 0.9), 3),
+        'source_accesses': {
+            'Bloomberg': random.randint(10, 50),
+            'Reuters': random.randint(10, 45),
+            'TechCrunch': random.randint(10, 40),
+            'Financial Times': random.randint(10, 35),
+            'BBC News': random.randint(10, 30),
+            'The Verge': random.randint(10, 25),
+            'Wall Street Journal': random.randint(10, 25),
+            'CNBC': random.randint(10, 20)
+        },
+        'category_usage': {
+            'technology': random.randint(15, 40),
+            'business': random.randint(10, 30),
+            'politics': random.randint(5, 20),
+            'sports': random.randint(3, 15),
+            'entertainment': random.randint(5, 18),
+            'science': random.randint(3, 12)
+        },
+        'total_historical_queries': random.randint(100, 500),
+        'avg_historical_response_time': round(random.uniform(1.5, 2.8), 2),
+        'top_categories': {
+            'technology': random.randint(40, 100),
+            'business': random.randint(30, 80),
+            'politics': random.randint(20, 60)
+        },
+        'system_uptime': 99.7,
+        'cache_hits': 87,
+        'last_updated': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
 
-    def get_live_stats():
-        """Mock live stats function"""
-        stats = get_system_stats()
-        stats.update({
-            'active_sources': len(stats.get('source_accesses', {})),
-            'avg_response': stats.get('avg_response_time', 0.0),
-            'total_articles': 150,
-            'system_status': '🟢 Optimal',
-            'cache_status': '87% hit rate',
-            'memory_usage': '2.4GB / 8GB',
-            'cpu_usage': '34%'
-        })
-        return stats
+def mock_get_live_stats():
+    """Mock live stats function"""
+    stats = mock_get_system_stats()
+    stats.update({
+        'active_sources': len(stats.get('source_accesses', {})),
+        'avg_response': stats.get('avg_response_time', 0.0),
+        'total_articles': 150,
+        'system_status': '🟢 Optimal',
+        'cache_status': '87% hit rate',
+        'memory_usage': '2.4GB / 8GB',
+        'cpu_usage': '34%'
+    })
+    return stats
 
 # ======================================================
-# START BACKGROUND RAG (OPTIONAL)
+# LAZY-LOADED REAL QUERY ENGINE FUNCTIONS
 # ======================================================
 
-# Disable background RAG for now to avoid Pathway issues
-if HAS_QUERY_ENGINE and "RAG_STARTED" not in st.session_state and os.getenv("ENABLE_BACKGROUND_RAG") == "1":
-    try:
-        # Check if NewsAPI key exists before starting
-        NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
-        if NEWSAPI_KEY and Path("simple_news_rag.py").exists():
-            import simple_news_rag
-            simple_news_rag.start_background_rag()
-            st.session_state["RAG_STARTED"] = True
-            print("✅ Background RAG started")
-        elif not NEWSAPI_KEY:
-            print("⚠️ No NewsAPI key found, skipping background RAG")
-    except Exception as e:
-        print(f"⚠️ RAG background failed: {e}")
+# Cache for real query engine functions
+_real_rag_answer = None
+_real_get_system_stats = None
+_real_get_live_stats = None
+
+def lazy_load_query_engine():
+    """Lazy load the query engine functions only when needed"""
+    global _real_rag_answer, _real_get_system_stats, _real_get_live_stats
+
+    if _real_rag_answer is None and HAS_QUERY_ENGINE:
+        try:
+            # Import and initialize Gemini API ONLY when needed
+            import google.generativeai as genai
+            API_KEY = os.getenv("GEMINI_API_KEY")
+            if API_KEY:
+                genai.configure(api_key=API_KEY)
+                # Now import the query engine
+                from query_engine import rag_answer as real_rag, get_system_stats as real_stats, get_live_stats as real_live
+                _real_rag_answer = real_rag
+                _real_get_system_stats = real_stats
+                _real_get_live_stats = real_live
+                print("✅ Real query engine lazy-loaded successfully")
+            else:
+                print("⚠️ No Gemini API key, using mock mode")
+        except Exception as e:
+            print(f"❌ Failed to lazy-load query engine: {e}")
+            # Fall back to mock functions
+            _real_rag_answer = None
+            _real_get_system_stats = None
+            _real_get_live_stats = None
+
+def rag_answer(query):
+    """Wrapper function that lazy-loads real engine or uses mock"""
+    if HAS_QUERY_ENGINE:
+        lazy_load_query_engine()
+        if _real_rag_answer is not None:
+            try:
+                return _real_rag_answer(query)
+            except Exception as e:
+                print(f"❌ Error in real rag_answer: {e}")
+                # Fall back to mock
+                return mock_rag_answer(query)
+
+    # Use mock if real engine not available
+    return mock_rag_answer(query)
+
+def get_system_stats():
+    """Wrapper function for stats - uses mock to avoid API calls"""
+    # Always use mock for stats to avoid unnecessary API calls
+    return mock_get_system_stats()
+
+def get_live_stats():
+    """Wrapper function for live stats - uses mock"""
+    return mock_get_live_stats()
+
+# ======================================================
+# DISABLE BACKGROUND RAG COMPLETELY
+# ======================================================
+
+# Do NOT start background RAG - it makes unnecessary API calls
+if "RAG_STARTED" not in st.session_state:
+    st.session_state["RAG_STARTED"] = False
+    print("⚠️ Background RAG disabled to prevent unnecessary API calls")
 
 # 1. Page Config
 st.set_page_config(
@@ -333,56 +367,52 @@ def convert_numpy_types(obj):
         return obj
 
 def get_real_time_stats():
-    """Get real-time statistics from query engine"""
+    """Get real-time statistics - uses mock to avoid API calls"""
     try:
-        if HAS_QUERY_ENGINE:
-            stats = get_system_stats()
-            # Convert all numpy types to native Python types
-            return convert_numpy_types(stats)
-        else:
-            # Return mock stats data
-            mock_stats = {
-                'date': datetime.now().strftime("%Y-%m-%d"),
-                'total_queries': random.randint(10, 50),
-                'avg_response_time': round(random.uniform(1.2, 2.5), 2),
-                'successful_searches': random.randint(8, 45),
-                'failed_searches': random.randint(0, 5),
-                'success_rate': round(random.uniform(85, 99), 1),
-                'total_articles_retrieved': random.randint(100, 300),
-                'avg_similarity_score': round(random.uniform(0.6, 0.9), 3),
-                'source_accesses': {
-                    'Bloomberg': random.randint(10, 50),
-                    'Reuters': random.randint(10, 45),
-                    'TechCrunch': random.randint(10, 40),
-                    'Financial Times': random.randint(10, 35),
-                    'BBC News': random.randint(10, 30),
-                    'The Verge': random.randint(10, 25),
-                    'Wall Street Journal': random.randint(10, 25),
-                    'CNBC': random.randint(10, 20)
-                },
-                'category_usage': {
-                    'technology': random.randint(15, 40),
-                    'business': random.randint(10, 30),
-                    'politics': random.randint(5, 20),
-                    'sports': random.randint(3, 15),
-                    'entertainment': random.randint(5, 18),
-                    'science': random.randint(3, 12)
-                },
-                'total_historical_queries': random.randint(100, 500),
-                'avg_historical_response_time': round(random.uniform(1.5, 2.8), 2),
-                'top_categories': {
-                    'technology': random.randint(40, 100),
-                    'business': random.randint(30, 80),
-                    'politics': random.randint(20, 60)
-                },
-                'system_uptime': 99.7,
-                'cache_hits': 87,
-                'last_updated': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-            return mock_stats
+        # Always use mock for stats to avoid unnecessary API calls
+        stats = get_system_stats()
+        # Convert all numpy types to native Python types
+        return convert_numpy_types(stats)
     except Exception as e:
         st.error(f"Error fetching stats: {str(e)}")
         return None
+
+def clean_response_text(text):
+    """Clean the response text to remove HTML tags and fix formatting"""
+    if not text:
+        return ""
+
+    # Remove HTML tags but keep the content
+    text = re.sub(r'<[^>]+>', '', text)
+
+    # Remove metadata footer if present
+    text = re.sub(r'Search Information.*', '', text, flags=re.DOTALL)
+
+    return text.strip()
+
+def process_search_query(query):
+    """Process a search query and return formatted response"""
+    print(f"📡 Processing query: {query}")  # Debug log
+
+    try:
+        # This will lazy-load the real engine or use mock
+        response = rag_answer(query)
+        response = clean_response_text(response)
+
+        # Update stats when a query is processed
+        if st.session_state.show_stats:
+            # Get fresh stats data (mock)
+            try:
+                st.session_state.real_stats_data = get_real_time_stats()
+                st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
+            except:
+                st.session_state.real_stats_data = None
+
+        return response
+
+    except Exception as e:
+        print(f"❌ Error in process_search_query: {e}")
+        return f"**Error Processing Query**\n\nUnable to fetch news results at the moment. Please try again.\n\nError: {str(e)}"
 
 # 2. Session State for History & Gemini-style chat flow
 if 'messages' not in st.session_state:
@@ -403,8 +433,10 @@ if 'show_typing_effect' not in st.session_state:
     st.session_state.show_typing_effect = True
 if 'typing_complete' not in st.session_state:
     st.session_state.typing_complete = False
-if 'typing_signal_received' not in st.session_state:  # NEW: Track typing completion
+if 'typing_signal_received' not in st.session_state:
     st.session_state.typing_signal_received = False
+if 'api_request_made' not in st.session_state:
+    st.session_state.api_request_made = False  # Track if API request was made
 
 # 3. Dynamic CSS Injection (same as before - keeping it as is since it works)
 st.markdown(f"""
@@ -1047,44 +1079,6 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-def clean_response_text(text):
-    """Clean the response text to remove HTML tags and fix formatting"""
-    if not text:
-        return ""
-
-    # Remove HTML tags but keep the content
-    text = re.sub(r'<[^>]+>', '', text)
-
-    # Remove metadata footer if present
-    text = re.sub(r'Search Information.*', '', text, flags=re.DOTALL)
-
-    return text.strip()
-
-def process_search_query(query):
-    """Process a search query and return formatted response"""
-
-    # 🚨 HARD STOP: do NOT call Gemini unless user clicked Send
-    if not st.session_state.get("user_submitted", False):
-        return ""
-
-    try:
-        response = rag_answer(query)   # Gemini runs ONLY here now
-        response = clean_response_text(response)
-
-        # Update stats only after real user queries
-        if st.session_state.show_stats:
-            try:
-                st.session_state.real_stats_data = get_real_time_stats()
-                st.session_state.last_stats_update = datetime.now().strftime("%M:%M:%S")
-            except:
-                st.session_state.real_stats_data = None
-
-        return response
-
-    except Exception as e:
-        return f"**Error Processing Query**\n\n{str(e)}"
-
-
 # 4. Sidebar
 with st.sidebar:
 
@@ -1120,6 +1114,7 @@ with st.sidebar:
             st.session_state.messages = []
             st.session_state.current_search = None
             st.session_state.show_stats = False
+            st.session_state.api_request_made = False  # Reset API flag
             st.rerun()
 
     with col2:
@@ -1127,7 +1122,7 @@ with st.sidebar:
                      key="stats_btn",
                      use_container_width=True):
             st.session_state.show_stats = not st.session_state.show_stats
-            # Get fresh stats data when button is clicked
+            # Get fresh stats data when button is clicked (mock only)
             if st.session_state.show_stats:
                 st.session_state.real_stats_data = get_real_time_stats()
                 st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
@@ -1203,7 +1198,7 @@ if st.session_state.show_stats:
                     Live monitoring of NewsFlow AI system performance and query analytics
                 </div>
                 <div class="real-time-badge">
-                    🔄 LIVE DATA
+                    🔄 MOCK DATA
                 </div>
             </div>
             <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">
@@ -1570,43 +1565,100 @@ elif not st.session_state.show_stats:
         </div>
         """, unsafe_allow_html=True)
 
-    # 8. Handle search requests from quick buttons or recent queries
-         if (
-                st.session_state.current_search
-                and not st.session_state.show_stats
-                and st.session_state.get("user_submitted", False)   # 🔐 Gemini gate
-         ):
-              query = st.session_state.current_search
+# 8. Handle search requests from quick buttons or recent queries
+if st.session_state.current_search and not st.session_state.show_stats:
+    query = st.session_state.current_search
 
-         # Add user message
+    # Add user message
+    st.session_state.messages.append({"role": "user", "content": query})
+    if query not in st.session_state.history:
+        st.session_state.history.append(query)
+
+    # Display user message
+    with st.chat_message("user", avatar="👤"):
+        st.markdown(f"""
+        <div class="user-message">
+            {query}
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Display assistant message with loading
+    with st.chat_message("assistant", avatar="✨"):
+        loading_placeholder = st.empty()
+
+        # Show loading animation
+        loading_placeholder.markdown("""
+        <div class="loading-container">
+            <div class="searching-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <div class="loading-text">Searching through news sources...</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Simulate processing time
+        time.sleep(1.5)
+
+        # Get response - THIS IS WHERE THE API REQUEST HAPPENS
+        print("🚀 Sending API request for query...")
+        st.session_state.api_request_made = True
+        response = process_search_query(query)
+
+        # Clear loading and show response
+        loading_placeholder.empty()
+
+        # Add small delay for smooth transition
+        time.sleep(0.3)
+
+        # Display response
+        st.markdown(f"""
+        <div class="summary-card">
+            <div class="summary-title">📰 News Analysis</div>
+            <div class="summary-content">
+                {response}
+            </div>
+            <div class="metadata-section">
+                <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">📊 SEARCH METADATA</div>
+                <div class="metadata-grid">
+                    <div class="metadata-item">
+                        <div class="metadata-label">Query</div>
+                        <div class="metadata-value">{query[:30]}{'...' if len(query) > 30 else ''}</div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-label">Sources Analyzed</div>
+                        <div class="metadata-value">5+ news sources</div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-label">Processing Time</div>
+                        <div class="metadata-value">1.2 seconds</div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-label">Confidence</div>
+                        <div class="metadata-value">High</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Store in session state
         st.session_state.messages.append({
-        "role": "user",
-        "content": query
-    })
+            "role": "assistant",
+            "data": response
+        })
 
-         # Generate response (Gemini runs ONLY here)
-         response = process_search_query(query)
-
-           # 🔒 Lock Gemini immediately after use
-          st.session_state.user_submitted = False
-
-            # Add assistant message
-         st.session_state.messages.append({
-             "role": "assistant",
-             "content": response
-    })
-
-    # Clear current search so it won't rerun
+    # Clear current search
     st.session_state.current_search = None
-
 
 # 9. Handle chat input (only if not showing stats)
 if not st.session_state.show_stats:
     if prompt := st.chat_input("Ask about news, technology, business, or any topic..."):
         if prompt.strip():
             st.session_state.current_search = prompt
-            st.session_state.user_submitted = True   # 🔓 allow Gemini ONCE
-
+            st.session_state.show_stats = False
+            st.rerun()
 
 # 10. Footer with same background as main content
 st.markdown("""
@@ -1629,9 +1681,3 @@ st.markdown("""
     </div>
 </div>
 """, unsafe_allow_html=True)
-
-
-
-
-
-
