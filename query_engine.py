@@ -577,14 +577,28 @@ Please provide a comprehensive summary that:
 Format the response to be informative and well-structured."""
 
     try:
-        # Get LLM summary
+        # Get LLM summary - let exceptions bubble up
         summary = llm_answer(prompt)
 
         # Calculate response time
         response_time = time_module.time() - start_time
-        
-        # Add footer
-        footer = f"""
+
+        # Create tracking data
+        tracking_data = {
+            'query': query,
+            'category': intent_info['primary'],
+            'response_time': response_time,
+            'similarity_score': avg_similarity,
+            'articles_retrieved': result_count,
+            'sources_accessed': sources_accessed,
+            'success': True
+        }
+
+        return summary, tracking_data
+    except Exception as e:
+        # Don't catch quota errors here - let them bubble up to rag_answer
+        if "429 You exceeded your current quota" in str(e):
+            raise  # Re-raise quota errors
 
 ---
 📊 **Search Information**
@@ -653,16 +667,6 @@ def rag_answer(query: str) -> str:
         # Generate summary and get tracking data
         summary, tracking_data = generate_multi_result_summary(query, results, intent_info)
 
-        # Check if the summary contains API quota error
-        if "429 You exceeded your current quota" in summary:
-            # Set the flag for Streamlit
-            import sys
-            if 'streamlit' in sys.modules:
-                import streamlit as st
-                st.session_state.api_key_limit_exceeded = True
-            # Return the error message
-            return summary
-
         # Record stats
         stats_tracker.record_query(
             query=tracking_data['query'],
@@ -679,18 +683,24 @@ def rag_answer(query: str) -> str:
         summary += f"\n\n⚡ **Performance:** Search completed in {total_time:.2f}s"
 
         return summary
+
     except Exception as e:
         error_msg = str(e)
+        print(f"❌ Error in rag_answer: {error_msg}")  # Debug print
 
         # Check if this is an API quota error
         if "429 You exceeded your current quota" in error_msg:
+            print("✅ Detected API quota error, setting flag...")  # Debug print
             # Set the flag for Streamlit
-            import sys
-            if 'streamlit' in sys.modules:
+            try:
                 import streamlit as st
                 st.session_state.api_key_limit_exceeded = True
+                print("✅ Streamlit flag set")  # Debug print
+            except:
+                print("⚠️ Could not import streamlit")  # Debug print
+
             # Return the quota error message
-            return f"⚠️ Gemini API error: 429 You exceeded your current quota... model: gemini-2.5-flash-lite"
+            return "⚠️ Gemini API error: 429 You exceeded your current quota... model: gemini-2.5-flash-lite"
 
         # Record failed query for other errors
         stats_tracker.record_query(
