@@ -1,16 +1,19 @@
+# cloud_llm.py should be:
 import os
-import google.generativeai as genai  # FIXED IMPORT
+import google.genai as genai  # NEW PACKAGE
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not API_KEY:
     raise RuntimeError("❌ GEMINI_API_KEY not set")
 
-genai.configure(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY)
 
-MODEL = "gemini-1.5-flash"  # Updated to a valid model name
+MODEL = "gemini-2.5-flash-lite"
 
 def llm(prompt: str, history=None):
-    model = genai.GenerativeModel(MODEL)
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=prompt
+    )
     return response.text
