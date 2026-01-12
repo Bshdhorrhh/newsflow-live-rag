@@ -120,14 +120,18 @@ if not HAS_QUERY_ENGINE:
 # START BACKGROUND RAG (OPTIONAL)
 # ======================================================
 
+# Disable background RAG for now to avoid Pathway issues
 if HAS_QUERY_ENGINE and "RAG_STARTED" not in st.session_state:
     try:
-        # Only try to start if file exists
-        if Path("simple_news_rag.py").exists():
+        # Check if NewsAPI key exists before starting
+        NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
+        if NEWSAPI_KEY and Path("simple_news_rag.py").exists():
             import simple_news_rag
             simple_news_rag.start_background_rag()
             st.session_state["RAG_STARTED"] = True
             print("✅ Background RAG started")
+        elif not NEWSAPI_KEY:
+            print("⚠️ No NewsAPI key found, skipping background RAG")
     except Exception as e:
         print(f"⚠️ RAG background failed: {e}")
 
@@ -969,7 +973,7 @@ with st.sidebar:
     col_t1, col_t2 = st.columns([4, 1])
     with col_t2:
         btn_emoji = "🌞" if st.session_state.theme == 'dark' else "🌙"
-        if st.button(btn_emoji, key="theme_toggle", help="Toggle Light/Dark Mode", use_container_width=True):
+        if st.button(btn_emoji, key="theme_toggle", help="Toggle Light/Dark Mode", width='stretch'):  # FIXED
             toggle_theme()
             st.rerun()
 
@@ -991,9 +995,9 @@ with st.sidebar:
     col1, col2 = st.columns([1, 1])
     with col1:
         if st.button("🔄 New Chat",
-                     use_container_width=True,
                      type="primary",
-                     key="new_chat_btn"):
+                     key="new_chat_btn",
+                     width='stretch'):  # FIXED
             st.session_state.messages = []
             st.session_state.current_search = None
             st.session_state.show_stats = False
@@ -1001,8 +1005,8 @@ with st.sidebar:
 
     with col2:
         if st.button("📊 Stats",
-                     use_container_width=True,
-                     key="stats_btn"):
+                     key="stats_btn",
+                     width='stretch'):  # FIXED
             st.session_state.show_stats = not st.session_state.show_stats
             # Get fresh stats data when button is clicked
             if st.session_state.show_stats:
@@ -1023,7 +1027,7 @@ with st.sidebar:
             if st.button(
                 f"🔍 {query[:25]}..." if len(query) > 25 else f"🔍 {query}",
                 key=f"history_{i}_{hash(query) % 1000}",
-                use_container_width=True,
+                width='stretch',  # FIXED
                 help=f"Search: {query}"
             ):
                 st.session_state.current_search = query
@@ -1235,7 +1239,7 @@ if st.session_state.show_stats:
         # Refresh button for stats
         col_refresh, _ = st.columns([1, 3])
         with col_refresh:
-            if st.button("🔄 Refresh Stats", use_container_width=True):
+            if st.button("🔄 Refresh Stats", width='stretch'):  # FIXED
                 st.session_state.real_stats_data = get_real_time_stats()
                 st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
                 st.rerun()
@@ -1405,7 +1409,7 @@ elif not st.session_state.show_stats:
         </script>
         """, height=0)
 
-        if st.button("⏭ Skip Intro"):
+        if st.button("⏭ Skip Intro", width='stretch'):  # FIXED
             st.session_state.show_typing_effect = False
             st.session_state.typing_complete = True
             st.rerun()
