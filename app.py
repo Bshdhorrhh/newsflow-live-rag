@@ -12,145 +12,79 @@ import sqlite3
 from pathlib import Path
 
 
+
+# ======================================================
+# DEBUG INFORMATION - FORCE OUTPUT
+# ======================================================
+
+import sys
+
+# Force output immediately
+sys.stdout.write("\n" + "="*80 + "\n")
+sys.stdout.write("FORCED DEBUG OUTPUT START\n")
+sys.stdout.write("="*80 + "\n\n")
+
+# Check what files are actually there
+sys.stdout.write("Current directory: " + os.getcwd() + "\n")
+sys.stdout.write("Files in directory:\n")
+for f in os.listdir('.'):
+    sys.stdout.write(f"  - {f}\n")
+
+sys.stdout.write("\n" + "-"*80 + "\n")
+sys.stdout.write("Checking for key files:\n")
+
+key_files = ['vectors.npy', 'metadata.json', 'query_engine.py', 'llm_router.py', 'app.py']
+for file in key_files:
+    if os.path.exists(file):
+        size = os.path.getsize(file)
+        sys.stdout.write(f"  ✅ {file}: {size} bytes\n")
+    else:
+        sys.stdout.write(f"  ❌ {file}: NOT FOUND\n")
+
+sys.stdout.write("\n" + "-"*80 + "\n")
+sys.stdout.write("Environment variables:\n")
+sys.stdout.write(f"  GEMINI_API_KEY: {'SET' if os.getenv('GEMINI_API_KEY') else 'NOT SET'}\n")
+sys.stdout.write(f"  NEWSAPI_KEY: {'SET' if os.getenv('NEWSAPI_KEY') else 'NOT SET'}\n")
+
+sys.stdout.write("\n" + "="*80 + "\n")
+sys.stdout.write("FORCED DEBUG OUTPUT END\n")
+sys.stdout.write("="*80 + "\n\n")
+sys.stdout.flush()  # Force flush
+
 # ======================================================
 # SAFE QUERY ENGINE LOADING
 # ======================================================
 
-print("\n" + "=" * 60)
-print("QUERY ENGINE LOADING DEBUG")
-print("=" * 60)
-
+sys.stdout.write("Attempting to load query engine...\n")
 HAS_QUERY_ENGINE = False
-try:
-    print("1. Checking for required files...")
-    required_files = ["vectors.npy", "metadata.json", "query_engine.py"]
-    files_status = {}
-    for file in required_files:
-        path = Path(file)
-        exists = path.exists()
-        files_status[file] = exists
-        if exists:
-            size = path.stat().st_size
-            print(f"   ✅ {file}: Exists ({size} bytes)")
-        else:
-            print(f"   ❌ {file}: MISSING")
 
-    if all(files_status.values()):
-        print("\n2. All files found, attempting to import query_engine...")
+try:
+    # Check files
+    required = ["vectors.npy", "metadata.json", "query_engine.py"]
+    all_exist = all(os.path.exists(f) for f in required)
+
+    sys.stdout.write(f"Required files all exist: {all_exist}\n")
+
+    if all_exist:
+        sys.stdout.write("Importing query_engine...\n")
         try:
             from query_engine import rag_answer, get_system_stats, get_live_stats
             HAS_QUERY_ENGINE = True
-            print("   ✅ Query engine imported successfully")
-
-            # Test the imports
-            print(f"   rag_answer function: {rag_answer}")
-            print(f"   get_system_stats function: {get_system_stats}")
-            print(f"   get_live_stats function: {get_live_stats}")
-        except ImportError as import_err:
-            print(f"   ❌ ImportError: {import_err}")
-            HAS_QUERY_ENGINE = False
-        except Exception as import_exc:
-            print(f"   ❌ Error during import: {import_exc}")
-            HAS_QUERY_ENGINE = False
+            sys.stdout.write("✅ SUCCESS: Query engine loaded\n")
+        except Exception as import_err:
+            sys.stdout.write(f"❌ FAILED to import query_engine: {import_err}\n")
+            import traceback
+            traceback.print_exc()
     else:
-        print("\n2. Missing required files, using mock mode")
-        HAS_QUERY_ENGINE = False
+        sys.stdout.write("❌ Missing files, using mock mode\n")
 
 except Exception as e:
-    print(f"\n❌ Unexpected error in query engine loading: {e}")
+    sys.stdout.write(f"❌ Error in query engine loading: {e}\n")
     import traceback
     traceback.print_exc()
-    HAS_QUERY_ENGINE = False
 
-print(f"\n3. Final status: HAS_QUERY_ENGINE = {HAS_QUERY_ENGINE}")
-
-# ======================================================
-# API KEY DEBUGGING
-# ======================================================
-
-print("\n" + "=" * 60)
-print("API KEY DEBUGGING")
-print("=" * 60)
-
-gemini_key = os.getenv("GEMINI_API_KEY")
-newsapi_key = os.getenv("NEWSAPI_KEY")
-
-print(f"GEMINI_API_KEY: {'SET' if gemini_key else 'NOT SET'}")
-if gemini_key:
-    print(f"  Length: {len(gemini_key)} characters")
-    print(f"  Starts with: {gemini_key[:10]}...")
-
-print(f"\nNEWSAPI_KEY: {'SET' if newsapi_key else 'NOT SET'}")
-if newsapi_key:
-    print(f"  Length: {len(newsapi_key)} characters")
-    print(f"  Starts with: {newsapi_key[:10]}...")
-
-# ======================================================
-# CHECK LLM ROUTER
-# ======================================================
-
-print("\n" + "=" * 60)
-print("LLM ROUTER CHECK")
-print("=" * 60)
-
-try:
-    from llm_router import llm_answer
-    print("✅ llm_router.py imported successfully")
-
-    # Test a simple query
-    test_query = "Test query for LLM"
-    print(f"\nTesting llm_answer with query: '{test_query}'")
-    try:
-        test_result = llm_answer(test_query)
-        print(f"✅ LLM test successful")
-        print(f"   Response length: {len(test_result)} characters")
-        if len(test_result) < 50:
-            print(f"   Response preview: {test_result}")
-    except Exception as llm_err:
-        print(f"❌ LLM test failed: {llm_err}")
-        import traceback
-        traceback.print_exc()
-
-except ImportError as e:
-    print(f"❌ Failed to import llm_router: {e}")
-except Exception as e:
-    print(f"❌ Error checking llm_router: {e}")
-
-print("\n" + "=" * 60)
-
-
-
-# ======================================================
-# DEBUG INFORMATION
-# ======================================================
-print("=" * 50)
-print("DEBUG: App starting on Streamlit Cloud")
-print(f"Python version: {sys.version}")
-print(f"Current directory: {os.getcwd()}")
-print(f"Files present: {os.listdir('.')}")
-
-# Check environment variables
-print("\nEnvironment Variables Check:")
-for var in ['GEMINI_API_KEY', 'NEWSAPI_KEY']:
-    value = os.getenv(var)
-    if value:
-        print(f"✅ {var}: Set (length: {len(value)})")
-    else:
-        print(f"⚠️ {var}: NOT SET")
-
-# Check if files exist
-print("\nFile Check:")
-for file in ['vectors.npy', 'metadata.json', 'query_engine.py']:
-    if os.path.exists(file):
-        print(f"✅ {file}: Exists")
-    else:
-        print(f"❌ {file}: Missing")
-
-print("=" * 50)
-
-# Add current folder to import path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
+sys.stdout.write(f"\nFINAL: HAS_QUERY_ENGINE = {HAS_QUERY_ENGINE}\n")
+sys.stdout.flush()
 
 
 # ======================================================
