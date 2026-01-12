@@ -16,23 +16,107 @@ from pathlib import Path
 # SAFE QUERY ENGINE LOADING
 # ======================================================
 
+print("\n" + "=" * 60)
+print("QUERY ENGINE LOADING DEBUG")
+print("=" * 60)
+
 HAS_QUERY_ENGINE = False
 try:
-    # Check if required files exist first
+    print("1. Checking for required files...")
     required_files = ["vectors.npy", "metadata.json", "query_engine.py"]
-    if all(Path(f).exists() for f in required_files):
-        from query_engine import rag_answer, get_system_stats, get_live_stats
-        HAS_QUERY_ENGINE = True
-        print("✅ Query engine loaded successfully")
+    files_status = {}
+    for file in required_files:
+        path = Path(file)
+        exists = path.exists()
+        files_status[file] = exists
+        if exists:
+            size = path.stat().st_size
+            print(f"   ✅ {file}: Exists ({size} bytes)")
+        else:
+            print(f"   ❌ {file}: MISSING")
+
+    if all(files_status.values()):
+        print("\n2. All files found, attempting to import query_engine...")
+        try:
+            from query_engine import rag_answer, get_system_stats, get_live_stats
+            HAS_QUERY_ENGINE = True
+            print("   ✅ Query engine imported successfully")
+
+            # Test the imports
+            print(f"   rag_answer function: {rag_answer}")
+            print(f"   get_system_stats function: {get_system_stats}")
+            print(f"   get_live_stats function: {get_live_stats}")
+        except ImportError as import_err:
+            print(f"   ❌ ImportError: {import_err}")
+            HAS_QUERY_ENGINE = False
+        except Exception as import_exc:
+            print(f"   ❌ Error during import: {import_exc}")
+            HAS_QUERY_ENGINE = False
     else:
-        print("⚠️ Required files missing, using mock mode")
-except ImportError as e:
-    print(f"❌ Query engine import failed: {e}")
-    HAS_QUERY_ENGINE = False
+        print("\n2. Missing required files, using mock mode")
+        HAS_QUERY_ENGINE = False
+
 except Exception as e:
-    print(f"❌ Error loading query engine: {e}")
+    print(f"\n❌ Unexpected error in query engine loading: {e}")
+    import traceback
+    traceback.print_exc()
     HAS_QUERY_ENGINE = False
 
+print(f"\n3. Final status: HAS_QUERY_ENGINE = {HAS_QUERY_ENGINE}")
+
+# ======================================================
+# API KEY DEBUGGING
+# ======================================================
+
+print("\n" + "=" * 60)
+print("API KEY DEBUGGING")
+print("=" * 60)
+
+gemini_key = os.getenv("GEMINI_API_KEY")
+newsapi_key = os.getenv("NEWSAPI_KEY")
+
+print(f"GEMINI_API_KEY: {'SET' if gemini_key else 'NOT SET'}")
+if gemini_key:
+    print(f"  Length: {len(gemini_key)} characters")
+    print(f"  Starts with: {gemini_key[:10]}...")
+
+print(f"\nNEWSAPI_KEY: {'SET' if newsapi_key else 'NOT SET'}")
+if newsapi_key:
+    print(f"  Length: {len(newsapi_key)} characters")
+    print(f"  Starts with: {newsapi_key[:10]}...")
+
+# ======================================================
+# CHECK LLM ROUTER
+# ======================================================
+
+print("\n" + "=" * 60)
+print("LLM ROUTER CHECK")
+print("=" * 60)
+
+try:
+    from llm_router import llm_answer
+    print("✅ llm_router.py imported successfully")
+
+    # Test a simple query
+    test_query = "Test query for LLM"
+    print(f"\nTesting llm_answer with query: '{test_query}'")
+    try:
+        test_result = llm_answer(test_query)
+        print(f"✅ LLM test successful")
+        print(f"   Response length: {len(test_result)} characters")
+        if len(test_result) < 50:
+            print(f"   Response preview: {test_result}")
+    except Exception as llm_err:
+        print(f"❌ LLM test failed: {llm_err}")
+        import traceback
+        traceback.print_exc()
+
+except ImportError as e:
+    print(f"❌ Failed to import llm_router: {e}")
+except Exception as e:
+    print(f"❌ Error checking llm_router: {e}")
+
+print("\n" + "=" * 60)
 
 
 
@@ -1011,7 +1095,7 @@ with st.sidebar:
     col_t1, col_t2 = st.columns([4, 1])
     with col_t2:
         btn_emoji = "🌞" if st.session_state.theme == 'dark' else "🌙"
-        if st.button(btn_emoji, key="theme_toggle", help="Toggle Light/Dark Mode", use_container_width=True):
+        if st.button(btn_emoji, key="theme_toggle", help="Toggle Light/Dark Mode", width='stretch'):
             toggle_theme()
             st.rerun()
 
