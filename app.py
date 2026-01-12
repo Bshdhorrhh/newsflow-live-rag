@@ -1169,11 +1169,7 @@ with st.sidebar:
 
     st.divider()
 
-    # Debug button
-    if st.button("Test Search", key="debug_test", use_container_width=True):
-        st.session_state.current_search = "technology news"
-        st.session_state.show_stats = False
-        st.rerun()
+
 
 # 5. Display system stats if requested
 if st.session_state.show_stats:
