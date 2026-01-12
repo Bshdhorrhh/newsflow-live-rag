@@ -1153,22 +1153,22 @@ with st.sidebar:
         st.caption("No recent searches")
         st.markdown("""
         <div style="margin-top: 1rem; color: var(--text-secondary); font-size: 0.9rem;">
-            Try searching for:
-            <div style="margin-top: 0.5rem;">
-                <span class="stats-badge">tech news</span>
-                <span class="stats-badge">ai</span>
-                <span class="stats-badge">politics</span>
-                <span class="stats-badge">business</span>
-                <span class="stats-badge">sports</span>
-                <span class="stats-badge">entertainment</span>
-            </div>
+        Try searching for:
+        <div style="margin-top: 0.5rem;">
+        <span class="stats-badge">tech news</span>
+        <span class="stats-badge">ai</span>
+        <span class="stats-badge">politics</span>
+        <span class="stats-badge">business</span>
+        <span class="stats-badge">sports</span>
+        <span class="stats-badge">entertainment</span>
+        </div>
         </div>
         """, unsafe_allow_html=True)
 
-            st.divider()
+    st.divider()
 
     # Debug button
-    if st.button("🐛 Test Search", key="debug_test", use_container_width=True):
+    if st.button("Test Search", key="debug_test", use_container_width=True):
         st.session_state.current_search = "technology news"
         st.session_state.show_stats = False
         st.rerun()
