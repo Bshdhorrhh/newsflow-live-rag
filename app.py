@@ -11,6 +11,36 @@ import streamlit.components.v1 as components
 import sqlite3
 from pathlib import Path
 
+
+# ======================================================
+# DEBUG INFORMATION
+# ======================================================
+print("=" * 50)
+print("DEBUG: App starting on Streamlit Cloud")
+print(f"Python version: {sys.version}")
+print(f"Current directory: {os.getcwd()}")
+print(f"Files present: {os.listdir('.')}")
+
+# Check environment variables
+print("\nEnvironment Variables Check:")
+for var in ['GEMINI_API_KEY', 'NEWSAPI_KEY']:
+    value = os.getenv(var)
+    if value:
+        print(f"✅ {var}: Set (length: {len(value)})")
+    else:
+        print(f"⚠️ {var}: NOT SET")
+
+# Check if files exist
+print("\nFile Check:")
+for file in ['vectors.npy', 'metadata.json', 'query_engine.py']:
+    if os.path.exists(file):
+        print(f"✅ {file}: Exists")
+    else:
+        print(f"❌ {file}: Missing")
+
+print("=" * 50)
+
+
 # Add current folder to import path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
