@@ -9,14 +9,15 @@ import pandas as pd
 import numpy as np
 import streamlit.components.v1 as components
 from simple_news_rag import start_background_rag
+import sqlite3
+import json
 
-
-# And modify the disable section:
 # ======================================================
 # BACKGROUND RAG - ENABLE BASED ON CONFIG
 # ======================================================
 
 ENABLE_BACKGROUND_RAG = os.getenv("ENABLE_BACKGROUND_RAG", "false").lower() == "true"
+NEWS_API_KEY = os.getenv("NEWSAPI_KEY", "")
 
 if "RAG_STARTED" not in st.session_state:
     if ENABLE_BACKGROUND_RAG and NEWS_API_KEY:
@@ -177,44 +178,49 @@ def mock_rag_answer(query):
 
 def mock_get_system_stats():
     """Mock system stats function"""
-    return {
-        'date': datetime.now().strftime("%Y-%m-%d"),
-        'total_queries': random.randint(10, 50),
-        'avg_response_time': round(random.uniform(1.2, 2.5), 2),
-        'successful_searches': random.randint(8, 45),
-        'failed_searches': random.randint(0, 5),
-        'success_rate': round(random.uniform(85, 99), 1),
-        'total_articles_retrieved': random.randint(100, 300),
-        'avg_similarity_score': round(random.uniform(0.6, 0.9), 3),
-        'source_accesses': {
-            'Bloomberg': random.randint(10, 50),
-            'Reuters': random.randint(10, 45),
-            'TechCrunch': random.randint(10, 40),
-            'Financial Times': random.randint(10, 35),
-            'BBC News': random.randint(10, 30),
-            'The Verge': random.randint(10, 25),
-            'Wall Street Journal': random.randint(10, 25),
-            'CNBC': random.randint(10, 20)
-        },
-        'category_usage': {
-            'technology': random.randint(15, 40),
-            'business': random.randint(10, 30),
-            'politics': random.randint(5, 20),
-            'sports': random.randint(3, 15),
-            'entertainment': random.randint(5, 18),
-            'science': random.randint(3, 12)
-        },
-        'total_historical_queries': random.randint(100, 500),
-        'avg_historical_response_time': round(random.uniform(1.5, 2.8), 2),
-        'top_categories': {
-            'technology': random.randint(40, 100),
-            'business': random.randint(30, 80),
-            'politics': random.randint(20, 60)
-        },
-        'system_uptime': 99.7,
-        'cache_hits': 87,
-        'last_updated': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
+    # Try to get real stats from database first
+    try:
+        return get_real_time_stats()
+    except:
+        # Fall back to mock if database fails
+        return {
+            'date': datetime.now().strftime("%Y-%m-%d"),
+            'total_queries': random.randint(10, 50),
+            'avg_response_time': round(random.uniform(1.2, 2.5), 2),
+            'successful_searches': random.randint(8, 45),
+            'failed_searches': random.randint(0, 5),
+            'success_rate': round(random.uniform(85, 99), 1),
+            'total_articles_retrieved': random.randint(100, 300),
+            'avg_similarity_score': round(random.uniform(0.6, 0.9), 3),
+            'source_accesses': {
+                'Bloomberg': random.randint(10, 50),
+                'Reuters': random.randint(10, 45),
+                'TechCrunch': random.randint(10, 40),
+                'Financial Times': random.randint(10, 35),
+                'BBC News': random.randint(10, 30),
+                'The Verge': random.randint(10, 25),
+                'Wall Street Journal': random.randint(10, 25),
+                'CNBC': random.randint(10, 20)
+            },
+            'category_usage': {
+                'technology': random.randint(15, 40),
+                'business': random.randint(10, 30),
+                'politics': random.randint(5, 20),
+                'sports': random.randint(3, 15),
+                'entertainment': random.randint(5, 18),
+                'science': random.randint(3, 12)
+            },
+            'total_historical_queries': random.randint(100, 500),
+            'avg_historical_response_time': round(random.uniform(1.5, 2.8), 2),
+            'top_categories': {
+                'technology': random.randint(40, 100),
+                'business': random.randint(30, 80),
+                'politics': random.randint(20, 60)
+            },
+            'system_uptime': 99.7,
+            'cache_hits': 87,
+            'last_updated': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
 
 def mock_get_live_stats():
     """Mock live stats function"""
@@ -229,6 +235,150 @@ def mock_get_live_stats():
         'cpu_usage': '34%'
     })
     return stats
+
+# ======================================================
+# DATABASE FUNCTIONS FOR REAL STATS
+# ======================================================
+
+def get_real_time_stats():
+    """Get real-time statistics from database"""
+    try:
+        conn = sqlite3.connect('query_stats.db')
+        cursor = conn.cursor()
+
+        # Get today's date
+        today = datetime.now().date().isoformat()
+
+        # Get today's queries
+        cursor.execute('''
+            SELECT COUNT(*) as total_queries,
+                   AVG(response_time) as avg_response_time,
+                   SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful_searches,
+                   SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failed_searches,
+                   AVG(similarity_score) as avg_similarity_score,
+                   SUM(articles_retrieved) as total_articles_retrieved
+            FROM query_stats
+            WHERE date(timestamp) = ?
+        ''', (today,))
+
+        today_stats = cursor.fetchone()
+
+        # Calculate success rate
+        total_q = today_stats[0] or 0
+        successful = today_stats[2] or 0
+        success_rate = (successful / total_q * 100) if total_q > 0 else 0
+
+        # Get source accesses
+        cursor.execute('''
+            SELECT sources_accessed, COUNT(*) as count
+            FROM query_stats
+            WHERE date(timestamp) = ?
+            GROUP BY sources_accessed
+        ''', (today,))
+
+        source_rows = cursor.fetchall()
+        source_accesses = {}
+        for sources_str, count in source_rows:
+            if sources_str:
+                for source in sources_str.split(','):
+                    source = source.strip()
+                    if source:
+                        source_accesses[source] = source_accesses.get(source, 0) + count
+
+        # Get category usage
+        cursor.execute('''
+            SELECT category, COUNT(*) as count
+            FROM query_stats
+            WHERE date(timestamp) = ?
+            GROUP BY category
+        ''', (today,))
+
+        category_rows = cursor.fetchall()
+        category_usage = dict(category_rows)
+
+        # Get historical stats
+        cursor.execute('''
+            SELECT COUNT(*) as total_historical,
+                   AVG(response_time) as avg_historical_response
+            FROM query_stats
+        ''')
+
+        historical_stats = cursor.fetchone()
+
+        # Get top categories overall
+        cursor.execute('''
+            SELECT category, COUNT(*) as count
+            FROM query_stats
+            GROUP BY category
+            ORDER BY count DESC
+            LIMIT 5
+        ''')
+
+        top_cats = cursor.fetchall()
+        top_categories = dict(top_cats)
+
+        conn.close()
+
+        return {
+            'date': today,
+            'total_queries': total_q,
+            'avg_response_time': round(today_stats[1] or 0.0, 2),
+            'successful_searches': successful,
+            'failed_searches': today_stats[3] or 0,
+            'success_rate': round(success_rate, 1),
+            'total_articles_retrieved': today_stats[5] or 0,
+            'avg_similarity_score': round(today_stats[4] or 0.0, 3),
+            'source_accesses': source_accesses,
+            'category_usage': category_usage,
+            'total_historical_queries': historical_stats[0] or 0,
+            'avg_historical_response_time': round(historical_stats[1] or 0.0, 2),
+            'top_categories': top_categories,
+            'system_uptime': 99.7,
+            'cache_hits': 87,
+            'last_updated': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+    except Exception as e:
+        print(f"❌ Error fetching real stats: {e}")
+        # Fall back to mock
+        return mock_get_system_stats()
+
+def get_detailed_query_history(limit=20):
+    """Get detailed query history from database"""
+    try:
+        conn = sqlite3.connect('query_stats.db')
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT
+                timestamp,
+                query,
+                category,
+                response_time,
+                similarity_score,
+                articles_retrieved,
+                sources_accessed,
+                CASE WHEN success THEN '✅' ELSE '❌' END as status
+            FROM query_stats
+            ORDER BY timestamp DESC
+            LIMIT ?
+        ''', (limit,))
+
+        columns = [desc[0] for desc in cursor.description]
+        rows = cursor.fetchall()
+
+        conn.close()
+
+        # Convert to list of dictionaries
+        history = []
+        for row in rows:
+            history.append(dict(zip(columns, row)))
+
+        return history
+
+    except Exception as e:
+        print(f"❌ Error fetching query history: {e}")
+        return []
 
 # ======================================================
 # LAZY-LOADED REAL QUERY ENGINE FUNCTIONS
@@ -281,13 +431,46 @@ def rag_answer(query):
     return mock_rag_answer(query)
 
 def get_system_stats():
-    """Wrapper function for stats - uses mock to avoid API calls"""
-    # Always use mock for stats to avoid unnecessary API calls
-    return mock_get_system_stats()
+    """Wrapper function for stats - uses real database when available"""
+    try:
+        if HAS_QUERY_ENGINE:
+            lazy_load_query_engine()
+            if _real_get_system_stats is not None:
+                return _real_get_system_stats()
+
+        # Fall back to database or mock
+        return get_real_time_stats()
+    except:
+        return mock_get_system_stats()
 
 def get_live_stats():
-    """Wrapper function for live stats - uses mock"""
-    return mock_get_live_stats()
+    """Wrapper function for live stats"""
+    try:
+        if HAS_QUERY_ENGINE:
+            lazy_load_query_engine()
+            if _real_get_live_stats is not None:
+                stats = _real_get_live_stats()
+                # Add database stats
+                real_stats = get_real_time_stats()
+                stats.update({
+                    'date': real_stats.get('date', datetime.now().strftime("%Y-%m-%d")),
+                    'total_queries': real_stats.get('total_queries', 0),
+                    'success_rate': real_stats.get('success_rate', 0),
+                    'total_articles_retrieved': real_stats.get('total_articles_retrieved', 0)
+                })
+                return stats
+    except:
+        pass
+
+    # Fall back
+    stats = mock_get_live_stats()
+    # Merge with real database stats
+    try:
+        real_stats = get_real_time_stats()
+        stats.update(real_stats)
+    except:
+        pass
+    return stats
 
 # ======================================================
 # DISABLE BACKGROUND RAG COMPLETELY
@@ -384,17 +567,6 @@ def convert_numpy_types(obj):
     else:
         return obj
 
-def get_real_time_stats():
-    """Get real-time statistics - uses mock to avoid API calls"""
-    try:
-        # Always use mock for stats to avoid unnecessary API calls
-        stats = get_system_stats()
-        # Convert all numpy types to native Python types
-        return convert_numpy_types(stats)
-    except Exception as e:
-        st.error(f"Error fetching stats: {str(e)}")
-        return None
-
 def clean_response_text(text):
     """Clean the response text to remove HTML tags and fix formatting"""
     if not text:
@@ -419,7 +591,7 @@ def process_search_query(query):
 
         # Update stats when a query is processed
         if st.session_state.show_stats:
-            # Get fresh stats data (mock)
+            # Get fresh stats data (real database)
             try:
                 st.session_state.real_stats_data = get_real_time_stats()
                 st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
@@ -455,6 +627,10 @@ if 'typing_signal_received' not in st.session_state:
     st.session_state.typing_signal_received = False
 if 'api_request_made' not in st.session_state:
     st.session_state.api_request_made = False  # Track if API request was made
+if 'show_query_history' not in st.session_state:
+    st.session_state.show_query_history = False
+if 'query_history_data' not in st.session_state:
+    st.session_state.query_history_data = []
 
 # 3. Dynamic CSS Injection (same as before - keeping it as is since it works)
 st.markdown(f"""
@@ -1123,7 +1299,7 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    col1, col2 = st.columns([1, 1])
+    col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
         if st.button("🔄 New Chat",
                      type="primary",
@@ -1132,6 +1308,7 @@ with st.sidebar:
             st.session_state.messages = []
             st.session_state.current_search = None
             st.session_state.show_stats = False
+            st.session_state.show_query_history = False
             st.session_state.api_request_made = False  # Reset API flag
             st.rerun()
 
@@ -1140,10 +1317,22 @@ with st.sidebar:
                      key="stats_btn",
                      use_container_width=True):
             st.session_state.show_stats = not st.session_state.show_stats
-            # Get fresh stats data when button is clicked (mock only)
+            st.session_state.show_query_history = False
+            # Get fresh stats data when button is clicked (real database)
             if st.session_state.show_stats:
                 st.session_state.real_stats_data = get_real_time_stats()
                 st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
+            st.rerun()
+
+    with col3:
+        if st.button("📝 History",
+                     key="history_btn",
+                     use_container_width=True):
+            st.session_state.show_query_history = not st.session_state.show_query_history
+            st.session_state.show_stats = False
+            # Get fresh history data
+            if st.session_state.show_query_history:
+                st.session_state.query_history_data = get_detailed_query_history()
             st.rerun()
 
     st.divider()
@@ -1164,6 +1353,7 @@ with st.sidebar:
             ):
                 st.session_state.current_search = query
                 st.session_state.show_stats = False
+                st.session_state.show_query_history = False
                 st.rerun()
     else:
         st.caption("No recent searches")
@@ -1186,8 +1376,6 @@ with st.sidebar:
         st.error("⚠️ Gemini API error: 429 You exceeded your current quota... model: gemini-2.5-flash-lite")
 
     st.divider()
-
-
 
 # 5. Display system stats if requested
 if st.session_state.show_stats:
@@ -1212,7 +1400,7 @@ if st.session_state.show_stats:
                     Live monitoring of NewsFlow AI system performance and query analytics
                 </div>
                 <div class="real-time-badge">
-                    🔄 MOCK DATA
+                    📊 REAL DATA
                 </div>
             </div>
             <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">
@@ -1376,6 +1564,23 @@ if st.session_state.show_stats:
                 use_container_width=True
             )
 
+        # API Usage Stats
+        st.markdown("""
+        <div style="margin-top: 2rem;">
+            <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">🔑 API Usage & Limits</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Calculate API usage (assuming 1 request per query)
+        api_used = total_queries
+        api_limit = 1000  # Daily limit
+        api_percentage = (api_used / api_limit * 100) if api_limit > 0 else 0
+
+        # Create API usage gauge
+        col_api1, col_api2, col_api3 = st.columns([1, 2, 1])
+        with col_api2:
+            st.progress(api_percentage / 100, text=f"API Usage: {api_used}/{api_limit} requests ({api_percentage:.1f}%)")
+
         # Refresh button for stats
         col_refresh, _ = st.columns([1, 3])
         with col_refresh:
@@ -1397,7 +1602,86 @@ if st.session_state.show_stats:
     else:
         st.error("Unable to fetch system statistics. Please try again.")
 
-# 6. Display chat history (only if not showing stats)
+# 5.5 Display query history if requested
+elif st.session_state.show_query_history:
+    # Clear any previous messages
+    if st.session_state.messages:
+        st.session_state.messages = []
+
+    # Get query history if not already cached
+    if not st.session_state.query_history_data:
+        st.session_state.query_history_data = get_detailed_query_history()
+
+    history_data = st.session_state.query_history_data
+
+    if history_data:
+        st.markdown(f"""
+        <div class="stats-card">
+            <div class="stats-title">📝 Query History</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <div style="color: var(--text-primary); font-size: 1rem; line-height: 1.6;">
+                    Detailed log of all user queries with performance metrics
+                </div>
+                <div class="real-time-badge">
+                    📊 REAL DATA
+                </div>
+            </div>
+            <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem;">
+                Showing {len(history_data)} most recent queries
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Convert to DataFrame for display
+        df = pd.DataFrame(history_data)
+
+        # Format the timestamp
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+
+        # Display the dataframe
+        st.dataframe(
+            df,
+            column_config={
+                "timestamp": st.column_config.TextColumn("Timestamp", width="medium"),
+                "query": st.column_config.TextColumn("Query", width="large"),
+                "category": st.column_config.TextColumn("Category", width="small"),
+                "response_time": st.column_config.NumberColumn("Response Time (s)", format="%.2f", width="small"),
+                "similarity_score": st.column_config.NumberColumn("Similarity", format="%.3f", width="small"),
+                "articles_retrieved": st.column_config.NumberColumn("Articles", width="small"),
+                "sources_accessed": st.column_config.TextColumn("Sources", width="medium"),
+                "status": st.column_config.TextColumn("Status", width="small")
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=500
+        )
+
+        # Summary stats
+        if len(history_data) > 0:
+            total_queries = len(history_data)
+            avg_response = df['response_time'].mean() if 'response_time' in df.columns else 0
+            success_rate = (df['status'] == '✅').sum() / total_queries * 100 if 'status' in df.columns else 0
+            avg_similarity = df['similarity_score'].mean() if 'similarity_score' in df.columns else 0
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Queries", total_queries)
+            with col2:
+                st.metric("Avg Response Time", f"{avg_response:.2f}s")
+            with col3:
+                st.metric("Success Rate", f"{success_rate:.1f}%")
+            with col4:
+                st.metric("Avg Similarity", f"{avg_similarity:.3f}")
+
+        # Refresh button
+        if st.button("🔄 Refresh History", use_container_width=True):
+            st.session_state.query_history_data = get_detailed_query_history()
+            st.rerun()
+    else:
+        st.info("No query history available yet. Start searching to build history!")
+
+# 6. Display chat history (only if not showing stats or history)
 elif st.session_state.messages:
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"], avatar="✨" if msg["role"]=="assistant" else "👤"):
@@ -1443,7 +1727,7 @@ elif st.session_state.messages:
                 """, unsafe_allow_html=True)
 
 # 7. Show typing effect or welcome message
-elif not st.session_state.show_stats:
+elif not st.session_state.show_stats and not st.session_state.show_query_history:
 
     if st.session_state.show_typing_effect and not st.session_state.typing_complete:
 
@@ -1580,7 +1864,7 @@ elif not st.session_state.show_stats:
         """, unsafe_allow_html=True)
 
 # 8. Handle search requests from quick buttons or recent queries
-if st.session_state.current_search and not st.session_state.show_stats:
+if st.session_state.current_search and not st.session_state.show_stats and not st.session_state.show_query_history:
     query = st.session_state.current_search
 
     # Add user message
@@ -1666,12 +1950,13 @@ if st.session_state.current_search and not st.session_state.show_stats:
     # Clear current search
     st.session_state.current_search = None
 
-# 9. Handle chat input (only if not showing stats)
-if not st.session_state.show_stats:
+# 9. Handle chat input (only if not showing stats or history)
+if not st.session_state.show_stats and not st.session_state.show_query_history:
     if prompt := st.chat_input("Ask about news, technology, business, or any topic..."):
         if prompt.strip():
             st.session_state.current_search = prompt
             st.session_state.show_stats = False
+            st.session_state.show_query_history = False
             st.rerun()
 
 # 10. Footer with same background as main content

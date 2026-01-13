@@ -2,6 +2,7 @@
 """
 CONTINUOUS LIVE NEWS RAG (STREAMLIT SAFE)
 Simplified version for Streamlit Cloud compatibility
+MODIFIED FOR 1000 API REQUESTS PER DAY
 """
 
 import os
@@ -14,9 +15,10 @@ import numpy as np
 from pathlib import Path
 from uuid import uuid4
 from threading import Lock
+from datetime import datetime, timedelta
 
 # ======================================================
-# CONFIG
+# CONFIG - MODIFIED FOR 1000 REQUESTS PER DAY
 # ======================================================
 
 # Use environment variable or default to mock mode
@@ -27,10 +29,73 @@ DATA_FILE = "live_news.csv"
 VECTORS_FILE = "vectors.npy"
 META_FILE = "metadata.json"
 SEEN_FILE = "seen_urls.json"
+API_STATS_FILE = "api_stats.json"  # Track API usage
 
 EMBED_DIM = 64
-POLL_INTERVAL = 60  # Reduced frequency for Streamlit Cloud
+POLL_INTERVAL = 300  # 5 minutes - reduced frequency to stay within 1000/day
+MAX_DAILY_REQUESTS = 1000  # NewsAPI free tier limit
+CATEGORIES = ["technology", "business", "politics", "sports", "entertainment", "science"]
 lock = Lock()
+
+# ======================================================
+# API USAGE TRACKER
+# ======================================================
+
+class APIUsageTracker:
+    """Track API usage to stay within 1000 requests per day"""
+
+    def __init__(self):
+        self.load_stats()
+
+    def load_stats(self):
+        """Load API usage stats from file"""
+        try:
+            if os.path.exists(API_STATS_FILE):
+                with open(API_STATS_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except:
+            pass
+        return {}
+
+    def save_stats(self, stats):
+        """Save API usage stats to file"""
+        try:
+            with open(API_STATS_FILE, "w", encoding="utf-8") as f:
+                json.dump(stats, f, indent=2)
+        except:
+            pass
+
+    def get_today_requests(self):
+        """Get number of requests made today"""
+        stats = self.load_stats()
+        today = datetime.now().date().isoformat()
+        return stats.get(today, {}).get("requests", 0)
+
+    def increment_requests(self, count=1):
+        """Increment request count for today"""
+        stats = self.load_stats()
+        today = datetime.now().date().isoformat()
+
+        if today not in stats:
+            stats[today] = {"requests": 0}
+
+        stats[today]["requests"] = stats[today].get("requests", 0) + count
+        self.save_stats(stats)
+
+        return stats[today]["requests"]
+
+    def can_make_request(self):
+        """Check if we can make another request today"""
+        today_requests = self.get_today_requests()
+        return today_requests < MAX_DAILY_REQUESTS
+
+    def get_usage_percentage(self):
+        """Get percentage of daily limit used"""
+        today_requests = self.get_today_requests()
+        return (today_requests / MAX_DAILY_REQUESTS * 100) if MAX_DAILY_REQUESTS > 0 else 0
+
+# Initialize API tracker
+api_tracker = APIUsageTracker()
 
 # ======================================================
 # STORAGE INIT
@@ -89,77 +154,125 @@ def embed_text(text: str) -> list[float]:
     return vec.tolist()
 
 # ======================================================
-# NEWS POLLER (OPTIONAL)
+# NEWS POLLER (OPTIONAL) - MODIFIED FOR 1000 REQUESTS/DAY
 # ======================================================
 
 def poll_newsapi():
-    """Poll NewsAPI for new articles"""
+    """Poll NewsAPI for new articles - optimized for 1000 requests/day"""
     if not USE_LIVE_NEWS:
         print("⚠️ NewsAPI key not set, running in mock mode")
         return
 
     print("📡 NewsAPI poller started")
+    print(f"📊 Daily API limit: {MAX_DAILY_REQUESTS} requests")
+
+    # Track last poll time per category
+    last_poll_times = {category: datetime.min for category in CATEGORIES}
 
     while True:
         try:
-            # Fetch news from NewsAPI
-            url = "https://newsapi.org/v2/top-headlines"
-            params = {
-                "language": "en",
-                "pageSize": 5,  # Reduced for Streamlit Cloud
-                "apiKey": NEWS_API_KEY,
-                "category": "technology"  # Focus on tech news
-            }
+            # Check if we can make more requests today
+            if not api_tracker.can_make_request():
+                today_requests = api_tracker.get_today_requests()
+                print(f"⚠️ Daily API limit reached: {today_requests}/{MAX_DAILY_REQUESTS}")
+                print(f"⏳ Waiting until tomorrow to resume...")
+                time.sleep(3600)  # Wait 1 hour before checking again
+                continue
 
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+            # Determine which category to poll (round-robin)
+            now = datetime.now()
 
-            with lock:
-                # Load seen URLs
-                with open(SEEN_FILE, "r", encoding="utf-8") as f:
-                    seen = set(json.load(f))
+            for category in CATEGORIES:
+                # Poll each category every 30 minutes
+                time_since_last_poll = (now - last_poll_times[category]).total_seconds()
 
-                new_rows = []
-                                # Debug print
-                if new_rows:
-                    print(f"📰 NEW ARTICLE ADDED:")
-                    print(f"   Title: {article.get('title', 'No title')}")
-                    print(f"   Source: {article.get('source', {}).get('name', 'Unknown')}")
-                    print(f"   URL: {url}")
-                for article in data.get("articles", []):
-                    url = article.get("url")
-                    if not url or url in seen:
+                if time_since_last_poll > 1800:  # 30 minutes
+                    print(f"📰 Polling {category} news...")
+
+                    # Check API usage before making request
+                    if not api_tracker.can_make_request():
+                        print(f"⚠️ Cannot poll {category} - daily limit reached")
                         continue
 
-                    # Create new row
-                    new_rows.append([
-                        str(uuid4()),
-                        url,
-                        article.get("title", ""),
-                        article.get("content") or article.get("description", ""),
-                        article.get("publishedAt", "")
-                    ])
-                    seen.add(url)
+                    # Fetch news from NewsAPI
+                    url = "https://newsapi.org/v2/top-headlines"
+                    params = {
+                        "language": "en",
+                        "pageSize": 10,  # Increased to get more articles per request
+                        "apiKey": NEWS_API_KEY,
+                        "category": category
+                    }
 
-                # Save new articles
-                if new_rows:
-                    with open(DATA_FILE, "a", newline="", encoding="utf-8") as f:
-                        csv.writer(f).writerows(new_rows)
+                    try:
+                        response = requests.get(url, params=params, timeout=15)
+                        response.raise_for_status()
+                        data = response.json()
 
-                    # Update seen URLs
-                    with open(SEEN_FILE, "w", encoding="utf-8") as f:
-                        json.dump(list(seen), f)
+                        # Increment API request count
+                        requests_made = api_tracker.increment_requests()
+                        usage_percent = api_tracker.get_usage_percentage()
+                        print(f"📊 API Usage: {requests_made}/{MAX_DAILY_REQUESTS} ({usage_percent:.1f}%)")
 
-                    print(f"📰 Added {len(new_rows)} new articles")
+                        with lock:
+                            # Load seen URLs
+                            with open(SEEN_FILE, "r", encoding="utf-8") as f:
+                                seen = set(json.load(f))
 
-        except requests.exceptions.RequestException as e:
-            print(f"⚠️ API request error: {e}")
+                            new_rows = []
+                            articles_added = 0
+
+                            for article in data.get("articles", []):
+                                url = article.get("url")
+                                if not url or url in seen:
+                                    continue
+
+                                # Create new row
+                                new_rows.append([
+                                    str(uuid4()),
+                                    url,
+                                    article.get("title", ""),
+                                    article.get("content") or article.get("description", ""),
+                                    article.get("publishedAt", "")
+                                ])
+                                seen.add(url)
+                                articles_added += 1
+
+                            # Save new articles
+                            if new_rows:
+                                with open(DATA_FILE, "a", newline="", encoding="utf-8") as f:
+                                    csv.writer(f).writerows(new_rows)
+
+                                # Update seen URLs
+                                with open(SEEN_FILE, "w", encoding="utf-8") as f:
+                                    json.dump(list(seen), f)
+
+                                print(f"✅ Added {articles_added} new {category} articles")
+                                # Debug print for new articles
+                                for row in new_rows[:2]:  # Show first 2 articles
+                                    title = row[2][:60] + "..." if len(row[2]) > 60 else row[2]
+                                    print(f"   📰 {title}")
+                            else:
+                                print(f"ℹ️ No new {category} articles found")
+
+                        # Update last poll time for this category
+                        last_poll_times[category] = now
+
+                        # Small delay between category polls
+                        time.sleep(5)
+
+                    except requests.exceptions.RequestException as e:
+                        print(f"⚠️ API request error for {category}: {e}")
+                        # Don't increment counter on error
+                    except Exception as e:
+                        print(f"⚠️ Unexpected error polling {category}: {e}")
+
+            # Wait before next round of polling
+            print(f"⏳ Waiting {POLL_INTERVAL//60} minutes before next poll cycle...")
+            time.sleep(POLL_INTERVAL)
+
         except Exception as e:
-            print(f"⚠️ Unexpected error in poller: {e}")
-
-        # Wait before next poll
-        time.sleep(POLL_INTERVAL)
+            print(f"⚠️ Unexpected error in poller main loop: {e}")
+            time.sleep(60)  # Wait a minute before retrying
 
 # ======================================================
 # VECTOR UPDATE FUNCTION
@@ -232,6 +345,7 @@ def update_vectors():
 def start_background_rag():
     """Start the background RAG system"""
     print("🚀 Starting NewsFlow RAG System")
+    print(f"📊 Daily API Limit: {MAX_DAILY_REQUESTS} requests")
 
     # Initialize storage
     if not init_storage():
@@ -242,7 +356,7 @@ def start_background_rag():
     if USE_LIVE_NEWS:
         poller_thread = threading.Thread(target=poll_newsapi, daemon=True)
         poller_thread.start()
-        print("✅ News poller started")
+        print("✅ News poller started with optimized 1000 requests/day strategy")
     else:
         print("ℹ️ Running without live news updates (no API key)")
 
