@@ -1521,17 +1521,17 @@ with st.sidebar:
 
     # Display the API usage with CORRECT variable interpolation
     st.markdown(f"""
-    <div style="margin: 20px 0; padding: 15px; background: var(--bg-input); border-radius: 12px; border: 1px solid var(--border-color);">
+    <div style="margin: 20px 0; padding: 15px; background: var(--bg-input); border-radius: 12px; border: 1px solid var(--border-color);display:none;">
         <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 10px;">🔑 API Usage Summary</div>
 
-        <div style="margin-bottom: 12px;">
+        <div style="margin-bottom: 12px;display:none;">
             <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px;">
                 <span style="color: var(--text-primary);">🤖 Gemini AI:</span>
                 <span style=`color: {gemini_color}`>
                     {gemini_used}/20
                 </span>
             </div>
-            <div style="background: var(--border-color); height: 6px; border-radius: 3px; overflow: hidden;">
+            <div style="background: var(--border-color); height: 6px; border-radius: 3px; overflow: hidden;display:none;">
                 <div style=`background: {gemini_color}; height: 100%; width: {min(gemini_percent, 100)}%`></div>
             </div>
             <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">
