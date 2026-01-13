@@ -8,28 +8,65 @@ import re
 import pandas as pd
 import numpy as np
 import streamlit.components.v1 as components
-from simple_news_rag import start_background_rag
 import sqlite3
 import json
 
 # ======================================================
-# BACKGROUND RAG - ENABLE BASED ON CONFIG
+# IMPORT NEWS FETCHER
 # ======================================================
 
-ENABLE_BACKGROUND_RAG = os.getenv("ENABLE_BACKGROUND_RAG", "false").lower() == "true"
-NEWS_API_KEY = os.getenv("NEWSAPI_KEY", "")
+try:
+    from simple_news_rag import start_background_rag, check_and_fetch_news, get_newsapi_usage
+    NEWS_FETCHER_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ Could not import news fetcher: {e}")
+    NEWS_FETCHER_AVAILABLE = False
 
-if "RAG_STARTED" not in st.session_state:
-    if ENABLE_BACKGROUND_RAG and NEWS_API_KEY:
-        start_background_rag()
-        st.session_state["RAG_STARTED"] = True
-        print("✅ Background RAG started with NewsAPI")
+# ======================================================
+# INITIALIZE SYSTEM
+# ======================================================
+
+def initialize_system():
+    """Initialize the news system on app load"""
+    print("🔍 Initializing NewsFlow system...")
+
+    # Initialize storage and check for news
+    if NEWS_FETCHER_AVAILABLE:
+        try:
+            # Initialize storage
+            start_background_rag()
+
+            # Check if we need fresh news
+            if "news_last_checked" not in st.session_state:
+                st.session_state.news_last_checked = None
+
+            # Only check every 30 minutes
+            should_check = False
+            if st.session_state.news_last_checked is None:
+                should_check = True
+            else:
+                last_check = datetime.fromisoformat(st.session_state.news_last_checked)
+                minutes_since_check = (datetime.now() - last_check).total_seconds() / 60
+                if minutes_since_check > 30:
+                    should_check = True
+
+            if should_check:
+                print("🔄 Checking for fresh news...")
+                if check_and_fetch_news():
+                    print("✅ Fresh news fetched successfully")
+                else:
+                    print("ℹ️ Using existing news data")
+                st.session_state.news_last_checked = datetime.now().isoformat()
+            else:
+                print("⏳ Too soon since last news check")
+
+        except Exception as e:
+            print(f"⚠️ Error initializing system: {e}")
     else:
-        st.session_state["RAG_STARTED"] = False
-        print("⚠️ Background RAG disabled (no API key or disabled by config)")
+        print("⚠️ News fetcher not available, running with mock data")
 
 # ======================================================
-# DEBUG INFORMATION - FORCE OUTPUT
+# DEBUG INFORMATION
 # ======================================================
 
 import sys
@@ -49,7 +86,6 @@ sys.stdout.write("\n" + "-"*80 + "\n")
 sys.stdout.write("Checking for key files:\n")
 
 key_files = ['vectors.npy', 'metadata.json', 'query_engine.py', 'llm_router.py', 'app.py']
-# Add this after line 34 in your app.py (after imports)
 print("\n=== NEWS DATABASE DEBUG ===")
 try:
     import csv
@@ -71,6 +107,7 @@ try:
 
 except Exception as e:
     print(f"❌ Error reading news: {e}")
+
 for file in key_files:
     if os.path.exists(file):
         size = os.path.getsize(file)
@@ -89,7 +126,7 @@ sys.stdout.write("="*80 + "\n\n")
 sys.stdout.flush()  # Force flush
 
 # ======================================================
-# SAFE QUERY ENGINE LOADING - ULTRA-ROBUST VERSION
+# SAFE QUERY ENGINE LOADING
 # ======================================================
 
 sys.stdout.write("\n" + "="*60 + "\n")
@@ -122,15 +159,12 @@ try:
 
     except ImportError as e:
         sys.stdout.write(f"❌ google.generativeai import failed: {e}\n")
-        # Don't install automatically - let user know
         sys.stdout.write("❌ Please install: pip install google-generativeai\n")
 
     # Step 3: Load query engine if files exist
     if all_exist and GEMINI_AVAILABLE:
         sys.stdout.write("\nImporting query_engine...\n")
         try:
-            # Import without initializing API calls
-            # We'll lazy-load the actual functions when needed
             sys.stdout.write("✅ Query engine available (will lazy-load)\n")
             HAS_QUERY_ENGINE = True
         except Exception as import_err:
@@ -154,9 +188,8 @@ sys.stdout.flush()
 # MOCK FUNCTIONS FOR FALLBACK
 # ======================================================
 
-# Define mock functions first
 def mock_rag_answer(query):
-    """Mock RAG answer function"""
+    """Mock RAG answer function - uses NO Gemini API"""
     mock_responses = {
         "tech": "**Technology News Summary**\n\nRecent developments in the tech sector show significant growth in AI adoption across industries. Major companies are investing heavily in machine learning research, with breakthroughs in natural language processing and computer vision.\n\n**Key Developments:**\n• AI integration in enterprise solutions increased by 40% this quarter\n• Cloud computing services show record adoption rates\n• Cybersecurity remains a top concern with new threats emerging\n• Quantum computing research reaches new milestones",
         "ai": "**Artificial Intelligence Updates**\n\nThe AI landscape continues to evolve rapidly with new models and applications emerging weekly. Recent conferences highlighted advancements in multimodal AI systems capable of processing text, images, and audio simultaneously.\n\n**Notable Developments:**\n• New open-source language models with improved reasoning capabilities\n• AI-driven healthcare diagnostics showing 95% accuracy in trials\n• Regulatory frameworks taking shape across multiple countries\n• Increased investment in AI safety research",
@@ -381,7 +414,80 @@ def get_detailed_query_history(limit=20):
         return []
 
 # ======================================================
-# LAZY-LOADED REAL QUERY ENGINE FUNCTIONS
+# GEMINI API USAGE TRACKER (Only 20 requests!)
+# ======================================================
+
+def get_gemini_usage():
+    """Get Gemini API usage count"""
+    try:
+        if os.path.exists('gemini_usage.json'):
+            with open('gemini_usage.json', 'r') as f:
+                data = json.load(f)
+                return data.get('total_used', 0)
+    except:
+        pass
+    return 0
+
+def increment_gemini_usage():
+    """Increment Gemini API usage counter"""
+    try:
+        if os.path.exists('gemini_usage.json'):
+            with open('gemini_usage.json', 'r') as f:
+                data = json.load(f)
+        else:
+            data = {'total_used': 0, 'daily_usage': {}}
+
+        today = datetime.now().date().isoformat()
+        data['total_used'] = data.get('total_used', 0) + 1
+
+        if today not in data['daily_usage']:
+            data['daily_usage'][today] = 0
+        data['daily_usage'][today] += 1
+
+        with open('gemini_usage.json', 'w') as f:
+            json.dump(data, f, indent=2)
+
+        return data['total_used']
+    except Exception as e:
+        print(f"❌ Error tracking Gemini usage: {e}")
+        return 0
+
+def can_use_gemini():
+    """Check if we can use Gemini API (limit: 20 total)"""
+    used = get_gemini_usage()
+    return used < 20
+
+def get_gemini_remaining():
+    """Get remaining Gemini API calls"""
+    used = get_gemini_usage()
+    return max(0, 20 - used)
+
+# ======================================================
+# NEWSAPI USAGE TRACKER
+# ======================================================
+
+def get_newsapi_usage_info():
+    """Get NewsAPI usage information"""
+    try:
+        if NEWS_FETCHER_AVAILABLE:
+            return get_newsapi_usage()
+    except:
+        pass
+
+    # Fallback: check api_stats.json directly
+    try:
+        if os.path.exists('api_stats.json'):
+            with open('api_stats.json', 'r') as f:
+                stats = json.load(f)
+            today = datetime.now().date().isoformat()
+            return stats.get(today, {}).get("requests", 0)
+    except:
+        pass
+
+    return 0
+
+# ======================================================
+# LAZY-LOADED REAL QUERY ENGINE FUNCTIONS WITH GEMINI LIMIT
 # ======================================================
 
 # Cache for real query engine functions
@@ -416,11 +522,21 @@ def lazy_load_query_engine():
             _real_get_live_stats = None
 
 def rag_answer(query):
-    """Wrapper function that lazy-loads real engine or uses mock"""
+    """Wrapper function that checks Gemini limit before using real engine"""
+    # Always check Gemini limit first
+    if not can_use_gemini():
+        print("⚠️ Gemini API limit reached (20/20), using mock responses")
+        st.session_state.gemini_limit_reached = True
+        return mock_rag_answer(query)
+
     if HAS_QUERY_ENGINE:
         lazy_load_query_engine()
         if _real_rag_answer is not None:
             try:
+                # Increment Gemini usage BEFORE making the call
+                increment_gemini_usage()
+                current_usage = get_gemini_usage()
+                print(f"🤖 Using Gemini API ({current_usage}/20)")
                 return _real_rag_answer(query)
             except Exception as e:
                 print(f"❌ Error in real rag_answer: {e}")
@@ -473,13 +589,88 @@ def get_live_stats():
     return stats
 
 # ======================================================
-# DISABLE BACKGROUND RAG COMPLETELY
+# HELPER FUNCTIONS
 # ======================================================
 
-# Do NOT start background RAG - it makes unnecessary API calls
-if "RAG_STARTED" not in st.session_state:
-    st.session_state["RAG_STARTED"] = False
-    print("⚠️ Background RAG disabled to prevent unnecessary API calls")
+def convert_numpy_types(obj):
+    """Recursively convert numpy types to native Python types for JSON serialization"""
+    if isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(convert_numpy_types(item) for item in obj)
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    else:
+        return obj
+
+def clean_response_text(text):
+    """Clean the response text to remove HTML tags and fix formatting"""
+    if not text:
+        return ""
+
+    # Remove HTML tags but keep the content
+    text = re.sub(r'<[^>]+>', '', text)
+
+    # Remove metadata footer if present
+    text = re.sub(r'Search Information.*', '', text, flags=re.DOTALL)
+
+    return text.strip()
+
+def process_search_query(query):
+    """Process a search query and return formatted response"""
+    print(f"📡 Processing query: {query}")  # Debug log
+
+    try:
+        # This will check Gemini limit and use mock if exceeded
+        response = rag_answer(query)
+        response = clean_response_text(response)
+
+        # Update stats when a query is processed
+        if st.session_state.show_stats:
+            # Get fresh stats data (real database)
+            try:
+                st.session_state.real_stats_data = get_real_time_stats()
+                st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
+            except:
+                st.session_state.real_stats_data = None
+
+        return response
+
+    except Exception as e:
+        print(f"❌ Error in process_search_query: {e}")
+        return f"**Error Processing Query**\n\nUnable to fetch news results at the moment. Please try again.\n\nError: {str(e)}"
+
+def fetch_fresh_news():
+    """Manually trigger news fetch"""
+    if NEWS_FETCHER_AVAILABLE:
+        with st.spinner("🔄 Fetching fresh news articles..."):
+            try:
+                success = check_and_fetch_news()
+                if success:
+                    st.success("✅ Successfully fetched fresh news!")
+                    st.session_state.news_last_checked = datetime.now().isoformat()
+                    return True
+                else:
+                    st.info("ℹ️ No new articles fetched (check API limits or try again later)")
+                    return False
+            except Exception as e:
+                st.error(f"❌ Error fetching news: {e}")
+                return False
+    else:
+        st.error("❌ News fetcher not available")
+        return False
+
+# ======================================================
+# PAGE CONFIG & INITIALIZATION
+# ======================================================
 
 # 1. Page Config
 st.set_page_config(
@@ -493,6 +684,11 @@ st.set_page_config(
         'About': "NewsFlow AI - Real-time News Intelligence"
     }
 )
+
+# Initialize system on first load
+if "system_initialized" not in st.session_state:
+    initialize_system()
+    st.session_state.system_initialized = True
 
 # ---------------------------------------------------------
 # THEME CONFIGURATION
@@ -544,66 +740,6 @@ else:
     }
     """
 
-# ---------------------------------------------------------
-# HELPER FUNCTIONS
-# ---------------------------------------------------------
-
-def convert_numpy_types(obj):
-    """Recursively convert numpy types to native Python types for JSON serialization"""
-    if isinstance(obj, dict):
-        return {key: convert_numpy_types(value) for key, value in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_numpy_types(item) for item in obj]
-    elif isinstance(obj, tuple):
-        return tuple(convert_numpy_types(item) for item in obj)
-    elif isinstance(obj, np.integer):
-        return int(obj)
-    elif isinstance(obj, np.floating):
-        return float(obj)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    elif isinstance(obj, np.bool_):
-        return bool(obj)
-    else:
-        return obj
-
-def clean_response_text(text):
-    """Clean the response text to remove HTML tags and fix formatting"""
-    if not text:
-        return ""
-
-    # Remove HTML tags but keep the content
-    text = re.sub(r'<[^>]+>', '', text)
-
-    # Remove metadata footer if present
-    text = re.sub(r'Search Information.*', '', text, flags=re.DOTALL)
-
-    return text.strip()
-
-def process_search_query(query):
-    """Process a search query and return formatted response"""
-    print(f"📡 Processing query: {query}")  # Debug log
-
-    try:
-        # This will lazy-load the real engine or use mock
-        response = rag_answer(query)
-        response = clean_response_text(response)
-
-        # Update stats when a query is processed
-        if st.session_state.show_stats:
-            # Get fresh stats data (real database)
-            try:
-                st.session_state.real_stats_data = get_real_time_stats()
-                st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
-            except:
-                st.session_state.real_stats_data = None
-
-        return response
-
-    except Exception as e:
-        print(f"❌ Error in process_search_query: {e}")
-        return f"**Error Processing Query**\n\nUnable to fetch news results at the moment. Please try again.\n\nError: {str(e)}"
-
 # 2. Session State for History & Gemini-style chat flow
 if 'messages' not in st.session_state:
     st.session_state.messages = []
@@ -626,13 +762,19 @@ if 'typing_complete' not in st.session_state:
 if 'typing_signal_received' not in st.session_state:
     st.session_state.typing_signal_received = False
 if 'api_request_made' not in st.session_state:
-    st.session_state.api_request_made = False  # Track if API request was made
+    st.session_state.api_request_made = False
 if 'show_query_history' not in st.session_state:
     st.session_state.show_query_history = False
 if 'query_history_data' not in st.session_state:
     st.session_state.query_history_data = []
+if 'gemini_limit_reached' not in st.session_state:
+    st.session_state.gemini_limit_reached = False
+if 'newsapi_usage' not in st.session_state:
+    st.session_state.newsapi_usage = 0
+if 'last_news_fetch' not in st.session_state:
+    st.session_state.last_news_fetch = None
 
-# 3. Dynamic CSS Injection (same as before - keeping it as is since it works)
+# 3. Dynamic CSS Injection
 st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -829,14 +971,8 @@ st.markdown(f"""
     }}
 
     @keyframes fadeInContent {{
-        from {{
-            opacity: 0;
-            transform: translateY(10px);
-        }}
-        to {{
-            opacity: 0.95;
-            transform: translateY(0);
-        }}
+        from {{ opacity: 0; transform: translateY(10px); }}
+        to {{ opacity: 0.95; transform: translateY(0); }}
     }}
 
     .summary-content p {{
@@ -1309,7 +1445,7 @@ with st.sidebar:
             st.session_state.current_search = None
             st.session_state.show_stats = False
             st.session_state.show_query_history = False
-            st.session_state.api_request_made = False  # Reset API flag
+            st.session_state.api_request_made = False
             st.rerun()
 
     with col2:
@@ -1318,7 +1454,7 @@ with st.sidebar:
                      use_container_width=True):
             st.session_state.show_stats = not st.session_state.show_stats
             st.session_state.show_query_history = False
-            # Get fresh stats data when button is clicked (real database)
+            # Get fresh stats data when button is clicked
             if st.session_state.show_stats:
                 st.session_state.real_stats_data = get_real_time_stats()
                 st.session_state.last_stats_update = datetime.now().strftime("%H:%M:%S")
@@ -1336,6 +1472,80 @@ with st.sidebar:
             st.rerun()
 
     st.divider()
+
+    # API Usage Summary in Sidebar
+    gemini_used = get_gemini_usage()
+    gemini_remaining = get_gemini_remaining()
+    newsapi_used = get_newsapi_usage_info()
+    newsapi_remaining = max(0, 1000 - newsapi_used)
+
+    # Get last fetch time
+    last_fetch = None
+    try:
+        if os.path.exists('api_stats.json'):
+            with open('api_stats.json', 'r') as f:
+                api_stats = json.load(f)
+            today = datetime.now().date().isoformat()
+            last_fetch_str = api_stats.get(today, {}).get("last_fetch")
+            if last_fetch_str:
+                last_fetch = datetime.fromisoformat(last_fetch_str)
+    except:
+        pass
+
+    last_fetch_text = "Never"
+    if last_fetch:
+        last_fetch_text = last_fetch.strftime("%H:%M")
+
+    st.markdown(f"""
+    <div style="margin: 20px 0; padding: 15px; background: var(--bg-input); border-radius: 12px; border: 1px solid var(--border-color);">
+        <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 10px;">🔑 API Usage Summary</div>
+
+        <div style="margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px;">
+                <span style="color: var(--text-primary);">🤖 Gemini AI:</span>
+                <span style="color: {'var(--accent-color)' if gemini_remaining > 5 else '#ff6b6b'}">
+                    {gemini_used}/20
+                </span>
+            </div>
+            <div style="background: var(--border-color); height: 6px; border-radius: 3px; overflow: hidden;">
+                <div style="background: {'var(--accent-color)' if gemini_remaining > 5 else '#ff6b6b'}; height: 100%; width: {min(gemini_used/20*100, 100)}%;"></div>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">
+                {gemini_remaining} calls remaining
+            </div>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px;">
+                <span style="color: var(--text-primary);">📰 NewsAPI:</span>
+                <span style="color: var(--accent-color);">
+                    {newsapi_used}/1000
+                </span>
+            </div>
+            <div style="background: var(--border-color); height: 6px; border-radius: 3px; overflow: hidden;">
+                <div style="background: var(--accent-color); height: 100%; width: {min(newsapi_used/1000*100, 100)}%;"></div>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">
+                {newsapi_remaining} calls remaining today
+            </div>
+        </div>
+
+        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-color);">
+            📅 Last fetch: {last_fetch_text}
+            <br>
+            {f'⚠️ Only {gemini_remaining} Gemini calls left!' if gemini_remaining <= 5 and gemini_remaining > 0 else '✅ API limits healthy'}
+            {f'<br>⛔ Gemini limit reached!' if gemini_remaining == 0 else ''}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Manual News Fetch Button
+    if st.button("🔄 Fetch Fresh News",
+                 help="Manually fetch latest news articles from NewsAPI",
+                 use_container_width=True,
+                 type="secondary"):
+        if fetch_fresh_news():
+            st.rerun()
 
     st.markdown("""
     <div style="margin: 20px 0;">
@@ -1374,6 +1584,9 @@ with st.sidebar:
     # API key limit error check
     if st.session_state.get('api_key_limit_exceeded', False):
         st.error("⚠️ Gemini API error: 429 You exceeded your current quota... model: gemini-2.5-flash-lite")
+
+    if st.session_state.get('gemini_limit_reached', False):
+        st.warning("⚠️ Gemini API limit reached (20/20). Using mock responses.")
 
     st.divider()
 
@@ -1449,6 +1662,60 @@ if st.session_state.show_stats:
                 <div class="stat-label">Articles Retrieved</div>
                 <div class="stat-value">{articles_retrieved}</div>
                 <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">Today</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # API Usage Stats
+        st.markdown("""
+        <div style="margin-top: 2rem;">
+            <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">🔑 API Usage & Limits</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Get API usage
+        gemini_used = get_gemini_usage()
+        newsapi_used = get_newsapi_usage_info()
+
+        # Create two columns for API usage
+        col_api1, col_api2 = st.columns(2)
+
+        with col_api1:
+            gemini_percent = (gemini_used / 20 * 100) if 20 > 0 else 0
+            gemini_color = "#4CAF50" if gemini_percent < 80 else "#FF9800" if gemini_percent < 95 else "#F44336"
+
+            st.markdown(f"""
+            <div class="stat-item" style="border-left: 4px solid {gemini_color};">
+                <div class="stat-label">🤖 Gemini AI</div>
+                <div class="stat-value" style="color: {gemini_color};">{gemini_used}/20</div>
+                <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">
+                    Query summarization
+                </div>
+                <div style="background: var(--border-color); height: 6px; border-radius: 3px; margin-top: 10px; overflow: hidden;">
+                    <div style="background: {gemini_color}; height: 100%; width: {min(gemini_percent, 100)}%;"></div>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 5px;">
+                    {20 - gemini_used} requests remaining
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col_api2:
+            newsapi_percent = (newsapi_used / 1000 * 100) if 1000 > 0 else 0
+            newsapi_color = "#4CAF50" if newsapi_percent < 80 else "#FF9800" if newsapi_percent < 95 else "#F44336"
+
+            st.markdown(f"""
+            <div class="stat-item" style="border-left: 4px solid {newsapi_color};">
+                <div class="stat-label">📰 NewsAPI</div>
+                <div class="stat-value" style="color: {newsapi_color};">{newsapi_used}/1000</div>
+                <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">
+                    Background fetching
+                </div>
+                <div style="background: var(--border-color); height: 6px; border-radius: 3px; margin-top: 10px; overflow: hidden;">
+                    <div style="background: {newsapi_color}; height: 100%; width: {min(newsapi_percent, 100)}%;"></div>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 5px;">
+                    {1000 - newsapi_used} requests remaining today
+                </div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1564,22 +1831,33 @@ if st.session_state.show_stats:
                 use_container_width=True
             )
 
-        # API Usage Stats
-        st.markdown("""
-        <div style="margin-top: 2rem;">
-            <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">🔑 API Usage & Limits</div>
-        </div>
-        """, unsafe_allow_html=True)
+        # API Usage Explanation
+        with st.expander("📖 How API Usage Works"):
+            st.markdown(f"""
+            **Your API Limits:**
+            - **Gemini AI**: 20 requests **total** (not daily) - for query summarization
+            - **NewsAPI**: 1000 requests **per day** - for background article fetching
 
-        # Calculate API usage (assuming 1 request per query)
-        api_used = total_queries
-        api_limit = 1000  # Daily limit
-        api_percentage = (api_used / api_limit * 100) if api_limit > 0 else 0
+            **Current Usage:**
+            - Gemini AI: **{gemini_used}/20** ({(gemini_used/20*100):.1f}%)
+            - NewsAPI: **{newsapi_used}/1000** ({(newsapi_used/1000*100):.1f}%)
 
-        # Create API usage gauge
-        col_api1, col_api2, col_api3 = st.columns([1, 2, 1])
-        with col_api2:
-            st.progress(api_percentage / 100, text=f"API Usage: {api_used}/{api_limit} requests ({api_percentage:.1f}%)")
+            **What happens when limits are reached:**
+            1. **Gemini limit reached**: System switches to mock responses (no AI)
+            2. **NewsAPI limit reached**: Background fetching stops until next day
+
+            **Tips to conserve API calls:**
+            - Use mock responses when Gemini limit is low
+            - NewsAPI runs automatically, no action needed
+            """)
+
+            if gemini_used >= 20:
+                st.error("⚠️ Gemini API limit reached! Using mock responses only.")
+            elif gemini_used >= 15:
+                st.warning(f"⚠️ Gemini API limit almost reached! Only {20 - gemini_used} calls left.")
+
+            if newsapi_used >= 900:
+                st.warning(f"⚠️ NewsAPI daily limit almost reached! Only {1000 - newsapi_used} calls left today.")
 
         # Refresh button for stats
         col_refresh, _ = st.columns([1, 3])
@@ -1853,13 +2131,61 @@ elif not st.session_state.show_stats and not st.session_state.show_query_history
                     st.rerun()
 
     else:
-        # Normal welcome page
+        # Normal welcome page - Show API usage warning if Gemini limit is low
+        gemini_used = get_gemini_usage()
+        gemini_remaining = get_gemini_remaining()
+        newsapi_used = get_newsapi_usage_info()
+
+        warning_html = ""
+        if gemini_used >= 20:
+            warning_html = """
+            <div style="margin: 2rem auto; padding: 1rem; background: rgba(244, 67, 54, 0.1); border: 1px solid #F44336; border-radius: 12px; max-width: 600px;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 0.5rem;">
+                    <div style="font-size: 1.5rem;">⚠️</div>
+                    <div style="font-weight: bold; color: #F44336;">Gemini API Limit Reached</div>
+                </div>
+                <div style="color: var(--text-primary);">
+                    You've used all 20 Gemini API calls. The system will now use <strong>mock responses only</strong>.
+                    To restore AI-powered summaries, you'll need a new Gemini API key.
+                </div>
+            </div>
+            """
+        elif gemini_used >= 15:
+            warning_html = f"""
+            <div style="margin: 2rem auto; padding: 1rem; background: rgba(255, 152, 0, 0.1); border: 1px solid #FF9800; border-radius: 12px; max-width: 600px;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 0.5rem;">
+                    <div style="font-size: 1.5rem;">⚠️</div>
+                    <div style="font-weight: bold; color: #FF9800;">Gemini API Limit Warning</div>
+                </div>
+                <div style="color: var(--text-primary);">
+                    You've used {gemini_used}/20 Gemini API calls. Only <strong>{gemini_remaining} calls remaining</strong>.
+                    Once exhausted, the system will switch to mock responses.
+                </div>
+            </div>
+            """
+
+        # Show current API usage
+        api_info_html = f"""
+        <div style="margin: 1rem auto; padding: 1rem; background: var(--bg-input); border-radius: 12px; max-width: 600px; border: 1px solid var(--border-color);">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                <div style="color: var(--text-primary); font-weight: 500;">🤖 Gemini AI:</div>
+                <div style="color: {'var(--accent-color)' if gemini_remaining > 5 else '#ff6b6b'}">{gemini_used}/20</div>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <div style="color: var(--text-primary); font-weight: 500;">📰 NewsAPI:</div>
+                <div style="color: var(--accent-color);">{newsapi_used}/1000 today</div>
+            </div>
+        </div>
+        """
+
         st.markdown(f"""
         <div class="welcome-message">
             <h1 style="font-size:4.2rem;font-weight:900;color:var(--text-primary)">NewsFlow AI</h1>
             <p style="color:var(--text-secondary);font-size:1.3rem;">
             Real-time news intelligence powered by semantic search and vector embeddings.
             </p>
+            {api_info_html}
+            {warning_html}
         </div>
         """, unsafe_allow_html=True)
 
@@ -1899,9 +2225,15 @@ if st.session_state.current_search and not st.session_state.show_stats and not s
         # Simulate processing time
         time.sleep(1.5)
 
-        # Get response - THIS IS WHERE THE API REQUEST HAPPENS
-        print("🚀 Sending API request for query...")
+        # Get response
+        print("🚀 Processing query...")
         st.session_state.api_request_made = True
+
+        # Check Gemini usage before processing
+        gemini_used = get_gemini_usage()
+        if gemini_used >= 20:
+            st.session_state.gemini_limit_reached = True
+
         response = process_search_query(query)
 
         # Clear loading and show response
