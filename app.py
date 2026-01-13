@@ -252,7 +252,7 @@ def mock_get_system_stats():
             },
             'system_uptime': 99.7,
             'cache_hits': 87,
-            'last_updated': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            'last_updated': datetime.now().strftime("%Y-%m-d %H:%M:%S")
         }
 
 def mock_get_live_stats():
@@ -1473,11 +1473,23 @@ with st.sidebar:
 
     st.divider()
 
-    # API Usage Summary in Sidebar
+    # API Usage Summary in Sidebar - FIXED VERSION
     gemini_used = get_gemini_usage()
     gemini_remaining = get_gemini_remaining()
     newsapi_used = get_newsapi_usage_info()
     newsapi_remaining = max(0, 1000 - newsapi_used)
+
+    # Debug print to check values
+    print(f"DEBUG - Gemini used: {gemini_used}, Remaining: {gemini_remaining}")
+    print(f"DEBUG - NewsAPI used: {newsapi_used}, Remaining: {newsapi_remaining}")
+
+    # Calculate percentages
+    gemini_percent = (gemini_used / 20 * 100) if 20 > 0 else 0
+    newsapi_percent = (newsapi_used / 1000 * 100) if 1000 > 0 else 0
+
+    # Determine colors based on usage
+    gemini_color = "var(--accent-color)" if gemini_remaining > 5 else "#ff6b6b"
+    newsapi_color = "var(--accent-color)"
 
     # Get last fetch time
     last_fetch = None
@@ -1496,6 +1508,18 @@ with st.sidebar:
     if last_fetch:
         last_fetch_text = last_fetch.strftime("%H:%M")
 
+    # Build status message
+    status_messages = []
+    if gemini_remaining == 0:
+        status_messages.append("⛔ Gemini limit reached!")
+    elif gemini_remaining <= 5:
+        status_messages.append(f"⚠️ Only {gemini_remaining} Gemini calls left!")
+    else:
+        status_messages.append("✅ API limits healthy")
+
+    status_html = "<br>".join(status_messages)
+
+    # Display the API usage with CORRECT variable interpolation
     st.markdown(f"""
     <div style="margin: 20px 0; padding: 15px; background: var(--bg-input); border-radius: 12px; border: 1px solid var(--border-color);">
         <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 10px;">🔑 API Usage Summary</div>
@@ -1503,12 +1527,12 @@ with st.sidebar:
         <div style="margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px;">
                 <span style="color: var(--text-primary);">🤖 Gemini AI:</span>
-                <span style="color: {'var(--accent-color)' if gemini_remaining > 5 else '#ff6b6b'}">
+                <span style="color: {gemini_color}">
                     {gemini_used}/20
                 </span>
             </div>
             <div style="background: var(--border-color); height: 6px; border-radius: 3px; overflow: hidden;">
-                <div style="background: {'var(--accent-color)' if gemini_remaining > 5 else '#ff6b6b'}; height: 100%; width: {min(gemini_used/20*100, 100)}%;"></div>
+                <div style="background: {gemini_color}; height: 100%; width: {min(gemini_percent, 100)}%;"></div>
             </div>
             <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">
                 {gemini_remaining} calls remaining
@@ -1518,12 +1542,12 @@ with st.sidebar:
         <div style="margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px;">
                 <span style="color: var(--text-primary);">📰 NewsAPI:</span>
-                <span style="color: var(--accent-color);">
+                <span style="color: {newsapi_color};">
                     {newsapi_used}/1000
                 </span>
             </div>
             <div style="background: var(--border-color); height: 6px; border-radius: 3px; overflow: hidden;">
-                <div style="background: var(--accent-color); height: 100%; width: {min(newsapi_used/1000*100, 100)}%;"></div>
+                <div style="background: {newsapi_color}; height: 100%; width: {min(newsapi_percent, 100)}%;"></div>
             </div>
             <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">
                 {newsapi_remaining} calls remaining today
@@ -1533,8 +1557,7 @@ with st.sidebar:
         <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-color);">
             📅 Last fetch: {last_fetch_text}
             <br>
-            {f'⚠️ Only {gemini_remaining} Gemini calls left!' if gemini_remaining <= 5 and gemini_remaining > 0 else '✅ API limits healthy'}
-            {f'<br>⛔ Gemini limit reached!' if gemini_remaining == 0 else ''}
+            {status_html}
         </div>
     </div>
     """, unsafe_allow_html=True)
