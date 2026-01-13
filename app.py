@@ -1527,12 +1527,12 @@ with st.sidebar:
         <div style="margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px;">
                 <span style="color: var(--text-primary);">🤖 Gemini AI:</span>
-                <span style="color: {gemini_color}">
+                <span style=`color: {gemini_color}`>
                     {gemini_used}/20
                 </span>
             </div>
             <div style="background: var(--border-color); height: 6px; border-radius: 3px; overflow: hidden;">
-                <div style="background: {gemini_color}; height: 100%; width: {min(gemini_percent, 100)}%;"></div>
+                <div style=`background: {gemini_color}; height: 100%; width: {min(gemini_percent, 100)}%`></div>
             </div>
             <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">
                 {gemini_remaining} calls remaining
