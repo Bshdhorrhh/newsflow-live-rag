@@ -8,6 +8,24 @@ import re
 import pandas as pd
 import numpy as np
 import streamlit.components.v1 as components
+from simple_news_rag import start_background_rag
+
+
+# And modify the disable section:
+# ======================================================
+# BACKGROUND RAG - ENABLE BASED ON CONFIG
+# ======================================================
+
+ENABLE_BACKGROUND_RAG = os.getenv("ENABLE_BACKGROUND_RAG", "false").lower() == "true"
+
+if "RAG_STARTED" not in st.session_state:
+    if ENABLE_BACKGROUND_RAG and NEWS_API_KEY:
+        start_background_rag()
+        st.session_state["RAG_STARTED"] = True
+        print("✅ Background RAG started with NewsAPI")
+    else:
+        st.session_state["RAG_STARTED"] = False
+        print("⚠️ Background RAG disabled (no API key or disabled by config)")
 
 # ======================================================
 # DEBUG INFORMATION - FORCE OUTPUT
