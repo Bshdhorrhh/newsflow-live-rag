@@ -1,4 +1,4 @@
-![](newsflow.png)
+![](Newsflow.png)
 
 ## 📰 NewsFlow AI
 
