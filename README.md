@@ -7,7 +7,7 @@ Think ChatGPT, but always up to date with *today’s* news.
 
 ### 🚀 What It Does
 
-* 🔄 **Live updates** every 15 seconds
+* 🔄 **Live updates** (There are limitations in the cloud storage therefore limited data)
 * ⚡ **Instant answers** to breaking news
 * 🎯 **Smart filtering** (tech, business, sports, politics, health, more)
 * 🧠 **Continuously learning** as news breaks
