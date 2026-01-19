@@ -1,4 +1,5 @@
-newsflow.png
+![](newsflow.png)
+
 🎯 What's This All About?
 Imagine having a personal news assistant that:
 
