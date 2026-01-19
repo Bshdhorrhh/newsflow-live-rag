@@ -118,7 +118,7 @@ LLM_BACKEND=local
 
 * **Arpit** – System Architect
 * **Sagar** – AI Engineer
-* **Keertan** – UI/UX Designer
+* **Keertan** – AI/Frontend Engineer
 * **Asim** – Data Engineer
 
 ---
